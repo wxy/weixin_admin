@@ -1,8 +1,9 @@
 <?php
 // global config
-/* cookie jar,need writable */
-$cookie_jar = '/tmp';
+/* cookiejar dir,need writable */
+$cookiejar_dir = '/tmp';
 /* set your admin username and password */
+/* if not set, will prompt it by auth dialog */
 $admin_user = '';
 $admin_pass = '';
 /* database setting */
@@ -10,6 +11,9 @@ $db_host = 'localhost';
 $db_user = '';
 $db_pass = '';
 $db_name = '';
+
+// user config
+if (file_exists('materials_conf.php')) require_once('materials_conf.php');
 
 // global variables
 /* session auth token */
@@ -29,7 +33,7 @@ get_materials($materials_url);
 curl_close($ch);
 	
 function get_agent() {
-	global $cookie_jar;
+	global $cookiejar_dir;
 	echo "start...<br />\n";
 
 	if(! extension_loaded('curl')) {
@@ -43,10 +47,19 @@ function get_agent() {
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 	curl_setopt($ch, CURLOPT_USERAGENT, $user_agent);
 	curl_setopt($ch, CURLINFO_HEADER_OUT, true);
-	if (! is_dir($cookie_jar) || ! is_writable($cookie_jar)) {
-		$cookie_jar = ini_get('upload_tmp_dir');
+	if (! is_dir($cookiejar_dir) || ! is_writable($cookiejar_dir)) {
+		$cookiejar_dir = ini_get('upload_tmp_dir');
 	}
-	curl_setopt($ch, CURLOPT_COOKIEJAR, $cookie_jar . '/weixin_admin.cookie');
+	if (! is_dir($cookiejar_dir) || ! is_writable($cookiejar_dir)) {
+		echo "not setting writable cookie jar dir.";
+		exit;
+	} 
+	$cookiejar = $cookiejar_dir . '/weixin_admin.cookie';
+	if (! is_writable($cookiejar)) {
+		echo "couldn't create cookiejar.";
+		exit;
+	}
+	curl_setopt($ch, CURLOPT_COOKIEJAR, $cookiejar);
 
 	return $ch;
 }
@@ -183,26 +196,28 @@ function get_materials($materials_url) {
 
 	$list = array();
 	if (! is_null($db)) {
-		$sql = "SELECT `appmsgid`,`itemidx`,`title`,`pageview`,`vistor` FROM dx_weixin_article";
+		$sql = "SELECT `appmsgid`,`itemidx`,`title`,`url`,`pageview`,`vistor` FROM dx_weixin_article";
 		$sth = mysql_query($sql);
 
 		while ($row = mysql_fetch_array($sth)) {
 			$list[$row['appmsgid'] . '/' . $row['itemidx']] = array(
 				'title' => $row['title'],
+				'url' => $row['url'],
 				'pageview' => $row['pageview'],
 				'vistor' => $row['vistor']);
 		}	
 	}
 	
 	$pageidx = 0;
+	if (isset($_GET['all']) && intval($_GET['all']) > 0) $pageidx = intval($_GET['all']) - 1;
 
 	$stat_url = 'http://admin.wechat.com/cgi-bin/statappmsg?token=' . $token . '&t=ajax-appmsg-stats&url=';
-	echo "<table border=1 cellpadding=4 style='border-collapse:collapse;'><tr><td>Num</td><td>Time</td><td>MsgId</td><td>PageView</td><td>vistor</td><td>Update</td><td>Title</td></tr>\n";
+	echo "<table border=1 cellpadding=4 style='border-collapse:collapse;'><tr><td>Num</td><td>Time</td><td>MsgId</td><td>Page View</td><td>Vistor</td><td>Update</td><td>Title</td></tr>\n";
 	$num = 0;
 
 	while (true) {
-		$materials_url = preg_replace('/pageidx=\d+/' , 'pageidx=' . $pageidx, $materials_url); 
-		$pageidx++;
+		$materials_url = preg_replace('/pageidx=\d+/' , 'pageidx=' . $pageidx++, $materials_url); 
+	
 		echo "<tr><td colspan=7 align=center bgcolor='#EEE'>Page $pageidx</td></tr>\n";
 		curl_setopt($ch, CURLOPT_URL, $materials_url);
 
@@ -240,10 +255,11 @@ function get_materials($materials_url) {
 								WHERE (`appmsgid` = '{$appmsgid}' AND `itemidx` = {$itemidx})";
 							mysql_query($sql) or die(mysql_error());
   							if (mysql_affected_rows()) {
-								$updated = ($pageview - $exist['pageview']) . '/' . ($vistor - $exist['vistor']);
+								$updated = '+ ' . ($pageview - $exist['pageview']) . '/' . ($vistor - $exist['vistor']);
 							}
 						}
 						$title = addslashes($exist['title']);
+						$url = $exist['url'];
 					} else {
 						$url = addslashes($item->url);
 						if (preg_match('/\/cgi-bin\/proxy\?url=(.*)/', $item->imgURL,$matches)) {
@@ -260,13 +276,23 @@ function get_materials($materials_url) {
 								`img_url` = '{$img_url}',`url` = '{$url}',
 								`title` = '{$title}',`desc` = '{$desc}',
 								`pageview` = {$pageview},`vistor` = {$vistor}";
-							$updated = 'N';
+							$updated = 'New';
 							mysql_query($sql) or die(mysql_error());
 						}
 					}
-					$bgcolor = ($pageview < 500)?'#FFF':(($pageview < 1000)?'#F8F8D0':(($pageview < 2000)?'#FF0':'#F00'));
+
+					if ($pageview < 500) {
+						$bgcolor = 'white';
+					} else if ($pageview < 1000) {
+						$bgcolor = 'lemonchiffon';
+					} else if ($pageview < 2000) {
+						$bgcolor = 'yellow';
+					} else {
+						$bgcolor = 'darkorange';
+					}
 					$num++;
-					echo "<tr style='background-color:$bgcolor;'><td>$num</td><td>$time</td><td>{$appmsgid}/{$itemidx}</td><td>$pageview</td><td>$vistor</td><td>$updated</td><td>$title</td></tr>\n";
+					echo "<tr style='background-color:$bgcolor;'><td>$num</td><td>$time</td><td>{$appmsgid}/{$itemidx}</td><td>$pageview</td><td>$vistor</td><td>$updated</td>";
+					echo "<td><a href='$url' target=_blank>$title</a></td></tr>\n";
 				}
 			}
 			flush();
@@ -277,6 +303,10 @@ function get_materials($materials_url) {
 		if (! isset($_GET['all'])) break;
 	}
 	echo "</table>\n";
+
+	if (! isset($_GET['all'])) {
+		echo "<a href='?all=2'>update other all</a> <a href='?all=1'>update all</a>";
+	}
 }
 
 function curl_redir_exec($ch,$with_header = 0){
