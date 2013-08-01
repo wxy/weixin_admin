@@ -11,6 +11,7 @@ $db_host = 'localhost';
 $db_user = '';
 $db_pass = '';
 $db_name = '';
+$db_table = 'weixin_article';
 
 // user config
 if (file_exists('materials_conf.php')) require_once('materials_conf.php');
@@ -190,13 +191,13 @@ function get_logined($logined_url) {
 }
 
 function get_materials($materials_url) {
-	global $ch,$token,$db;
+	global $ch,$token,$db,$db_table;
 	$materials_url = 'http://admin.wechat.com' . $materials_url;
 	echo "access materials url and parse<br />\n";
 
 	$list = array();
 	if (! is_null($db)) {
-		$sql = "SELECT `appmsgid`,`itemidx`,`title`,`url`,`pageview`,`vistor` FROM dx_weixin_article";
+		$sql = "SELECT `appmsgid`,`itemidx`,`title`,`url`,`pageview`,`vistor` FROM `{$db_table}` ";
 		$sth = mysql_query($sql);
 
 		while ($row = mysql_fetch_array($sth)) {
@@ -250,7 +251,7 @@ function get_materials($materials_url) {
 					if (isset($list[$appmsgid . '/' . $itemidx])) {
 						$exist = $list[$appmsgid . '/' . $itemidx];
 						if (! is_null($db)) {
-							$sql = "UPDATE dx_weixin_article SET
+							$sql = "UPDATE `{$db_table}` SET
 								`pageview` = {$pageview},`vistor` = {$vistor}
 								WHERE (`appmsgid` = '{$appmsgid}' AND `itemidx` = {$itemidx})";
 							mysql_query($sql) or die(mysql_error());
@@ -271,7 +272,7 @@ function get_materials($materials_url) {
 						$desc = addslashes($item->desc);
 						if (! is_null($db)) {
 
-							$sql = "INSERT dx_weixin_article SET
+							$sql = "INSERT `{$db_table}` SET
 								`appmsgid` = '{$appmsgid}', `itemidx` = {$itemidx},`time` = '{$time}',
 								`img_url` = '{$img_url}',`url` = '{$url}',
 								`title` = '{$title}',`desc` = '{$desc}',
