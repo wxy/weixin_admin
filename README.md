@@ -38,9 +38,9 @@ materials.php
   
 ### 数据库存储
 
-如果需要通过数据库存储访问数据，可以通过以下语句创建数据表，并如上设置数据库访问信息。
+如果需要通过数据库存储访问数据，可以通过以下语句创建数据表（或参见database.sql），并如上设置数据库访问信息。
 
-	CREATE TABLE `dx_weixin_article` (
+	CREATE TABLE `weixin_article` (
 		`appmsgid` int not null default 0,
 		`itemidx` int not null default 1,
 		`time` date not null default '0000-00-00',
