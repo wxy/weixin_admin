@@ -4,14 +4,14 @@
 $cookiejar_dir = '/tmp';
 /* set your admin username and password */
 /* if not set, will prompt it by auth dialog */
-$admin_user = '';
-$admin_pass = '';
+$admin_user    = '';
+$admin_pass    = '';
 /* database setting */
-$db_host = 'localhost';
-$db_user = '';
-$db_pass = '';
-$db_name = '';
-$db_table = 'weixin_article';
+$db_host       = 'localhost';
+$db_user       = '';
+$db_pass       = '';
+$db_name       = '';
+$db_table      = 'weixin_article';
 
 // user config
 if (file_exists('materials_conf.php')) require_once('materials_conf.php');
@@ -110,10 +110,10 @@ function do_login($admin_user,$admin_pass) {
 	message("do login...");
 
 	$post_data = array(
-		'username' 	=> $admin_user,
-		'pwd'		=> md5(substr($admin_pass,0,16)),
-		'imgcode'   => '',
-		'f'         => 'json');
+		'username' => $admin_user,
+		'pwd'      => md5(substr($admin_pass,0,16)),
+		'imgcode'  => '',
+		'f'        => 'json');
 	curl_setopt($ch, CURLOPT_URL, $login_url);
 	curl_setopt($ch, CURLOPT_REFERER, $refer_url);
 	curl_setopt($ch, CURLOPT_POST, 1);
@@ -213,6 +213,7 @@ function get_materials($materials_url) {
 
 	$materials_url = 'http://admin.wechat.com' . $materials_url;
 	message("access materials page and parse it.");
+	flush();
 
 	$list = array();
 	if (! is_null($db)) {
@@ -221,10 +222,10 @@ function get_materials($materials_url) {
 
 		while ($row = mysql_fetch_array($sth)) {
 			$list[$row['appmsgid'] . '/' . $row['itemidx']] = array(
-				'title' => $row['title'],
-				'url' => $row['url'],
+				'title'    => $row['title'],
+				'url'      => $row['url'],
 				'pageview' => $row['pageview'],
-				'vistor' => $row['vistor']);
+				'vistor'   => $row['vistor']);
 		}	
 	}
 	
@@ -232,99 +233,117 @@ function get_materials($materials_url) {
 	if (isset($_GET['all']) && intval($_GET['all']) > 0) $pageidx = intval($_GET['all']) - 1;
 
 	$stat_url = 'http://admin.wechat.com/cgi-bin/statappmsg?token=' . $token . '&t=ajax-appmsg-stats&url=';
-	echo "<table border=1 cellpadding=4 style='border-collapse:collapse;'><tr><td>Num</td><td>Time</td><td>MsgId</td><td>Page View</td><td>Vistor</td><td>Update</td><td>Title</td></tr>\n";
-	$num = 0;
-
+	echo "<table border=1 cellpadding=4 style='border-collapse:collapse;'>";
+	echo "<thead><tr><th>Time</th><th>MsgId</th><th>Index</th><th>Page View</th><th>Vistor</th><th>Update</th><th>P/V</th><th>Title</th></tr></thead><tbody>\n";
+	
+	$total_material = 0;
+	$total_item     = 0;
+	$total_pageview = 0;
+	$total_vistor   = 0;
+	$avg_ppv        = 0;
 	while (true) {
 		$materials_url = preg_replace('/pageidx=\d+/' , 'pageidx=' . $pageidx++, $materials_url); 
 	
-		echo "<tr><td colspan=7 align=center bgcolor='#EEE'>Page $pageidx</td></tr>\n";
 		curl_setopt($ch, CURLOPT_URL, $materials_url);
 
 		$output = curl_redir_exec($ch);
 		if ($output === false) error(curl_error($ch));
 
-		if (preg_match('/<script id="json-msglist" type="json">(.*?)<\/script>/s', $output,$matches)) {
-			$materials = json_decode($matches[1]);
-			if ($materials === false || ! $materials->count) {
-				message("not found materials");
-				break;
-			}
-
-			foreach ($materials->list as $appmsg) {
-				$appmsgid = $appmsg->appId;
-				$time = $appmsg->time;
-
-				foreach ($appmsg->appmsgList as $itemidx => $item) {
-					$itemidx++;
-					curl_setopt($ch, CURLOPT_URL, $stat_url . urlencode($item->url));
-					$output = curl_redir_exec($ch);
-					$stat = json_decode($output);
-
-					$pageview = $stat->PageView;
-					$vistor = $stat->UniqueView;
-
-					$updated = '';
-						
-					if (isset($list[$appmsgid . '/' . $itemidx])) {
-						$exist = $list[$appmsgid . '/' . $itemidx];
-						if (! is_null($db)) {
-							$sql = "UPDATE `{$db_table}` SET
-								`pageview` = {$pageview},`vistor` = {$vistor}
-								WHERE (`appmsgid` = '{$appmsgid}' AND `itemidx` = {$itemidx})";
-							mysql_query($sql) or error(mysql_error());
-  							if (mysql_affected_rows()) {
-								$updated = '+ ' . ($pageview - $exist['pageview']) . '/' . ($vistor - $exist['vistor']);
-							}
-						}
-						$title = addslashes($exist['title']);
-						$url = $exist['url'];
-					} else {
-						$url = addslashes($item->url);
-						if (preg_match('/\/cgi-bin\/proxy\?url=(.*)/', $item->imgURL,$matches)) {
-							$img_url = urldecode($matches[1]);
-							$img_url = addslashes($img_url);
-						}
-						
-						$title = addslashes($item->title);
-						$desc = addslashes($item->desc);
-						if (! is_null($db)) {
-
-							$sql = "INSERT `{$db_table}` SET
-								`appmsgid` = '{$appmsgid}', `itemidx` = {$itemidx},`time` = '{$time}',
-								`img_url` = '{$img_url}',`url` = '{$url}',
-								`title` = '{$title}',`desc` = '{$desc}',
-								`pageview` = {$pageview},`vistor` = {$vistor}";
-							$updated = 'New';
-							mysql_query($sql) or error(mysql_error());
-						}
-					}
-
-					if ($pageview < 500) {
-						$bgcolor = 'white';
-					} else if ($pageview < 1000) {
-						$bgcolor = 'lemonchiffon';
-					} else if ($pageview < 2000) {
-						$bgcolor = 'yellow';
-					} else {
-						$bgcolor = 'darkorange';
-					}
-					$num++;
-					echo "<tr style='background-color:$bgcolor;'><td>$num</td><td>$time</td><td>{$appmsgid}/{$itemidx}</td><td>$pageview</td><td>$vistor</td><td>$updated</td>";
-					echo "<td><a href='$url' target=_blank>$title</a></td></tr>\n";
-				}
-			}
-			flush();
-		} else {
-			echo "not found materials";
+		if (! preg_match('/<script id="json-msglist" type="json">(.*?)<\/script>/s', $output,$matches)) {
+			break;
 		}
+
+		$materials = json_decode($matches[1]);
+		if ($materials === false || ! $materials->count) {
+			break;
+		}
+
+		echo "<tr><td colspan=8 align=center bgcolor='#EEE'>Page $pageidx</td></tr>\n";
+		foreach ($materials->list as $material) {
+			$appmsgid = $material->appId;
+			$time     = $material->time;
+			$count    = $material->count;
+			$total_material++;
+			foreach ($material->appmsgList as $itemidx => $item) {
+				$itemidx++;
+				curl_setopt($ch, CURLOPT_URL, $stat_url . urlencode($item->url));
+				$output   = curl_redir_exec($ch);
+				$stat     = json_decode($output);
+				
+				$pageview = $stat->PageView;
+				$vistor   = $stat->UniqueView;
+				
+				$updated  = '';
+					
+				if (isset($list[$appmsgid . '/' . $itemidx])) {
+					$exist = $list[$appmsgid . '/' . $itemidx];
+					if (! is_null($db)) {
+						$sql = "UPDATE `{$db_table}` SET
+							`pageview` = {$pageview},`vistor` = {$vistor}
+							WHERE (`appmsgid` = '{$appmsgid}' AND `itemidx` = {$itemidx})";
+						mysql_query($sql) or error(mysql_error());
+							if (mysql_affected_rows()) {
+							$updated = '+ ' . ($pageview - $exist['pageview']) . '/' . ($vistor - $exist['vistor']);
+						}
+					}
+					$title = addslashes($exist['title']);
+					$url = $exist['url'];
+				} else {
+					$url = addslashes($item->url);
+					if (preg_match('/\/cgi-bin\/proxy\?url=(.*)/', $item->imgURL,$matches)) {
+						$img_url = urldecode($matches[1]);
+						$img_url = addslashes($img_url);
+					}
+					
+					$title = addslashes($item->title);
+					$desc  = addslashes($item->desc);
+					if (! is_null($db)) {
+
+						$sql = "INSERT `{$db_table}` SET
+							`appmsgid` = '{$appmsgid}', `itemidx` = {$itemidx},`time` = '{$time}',
+							`img_url` = '{$img_url}',`url` = '{$url}',
+							`title` = '{$title}',`desc` = '{$desc}',
+							`pageview` = {$pageview},`vistor` = {$vistor}";
+						$updated = 'New';
+						mysql_query($sql) or error(mysql_error());
+					}
+				}
+
+				if ($pageview < 500) {
+					$bgcolor = 'white';
+				} else if ($pageview < 1000) {
+					$bgcolor = 'lemonchiffon';
+				} else if ($pageview < 2000) {
+					$bgcolor = 'yellow';
+				} else {
+					$bgcolor = 'darkorange';
+				}
+
+				$ppv = ($vistor != 0)?sprintf("%.2f",$pageview / $vistor):'n/a';
+				
+				$total_item++;
+				$total_pageview += $pageview;
+				$total_vistor   += $vistor;
+				echo "<tr style='background-color:$bgcolor;' onmouseover='this.style.backgroundColor=\"honeydew\";' onmouseout='this.style.backgroundColor=\"$bgcolor\";'>\n";
+				if ($count) {
+					echo "<td rowspan=$count bgcolor=white>$time</td><td rowspan=$count bgcolor=white>{$appmsgid}</td>";
+					$count = 0;
+				}
+				echo "<td>{$itemidx}</td><td>$pageview</td><td>$vistor</td><td>$updated</td><td>$ppv</td>";
+				echo "<td><a href='$url' target=_blank>$title</a></td></tr>\n";
+			}
+		}
+		flush();
 		
 		if (! isset($_GET['all'])) break;
 	}
+	$avg_ppv = ($total_vistor != 0)?sprintf("%.2f",$total_pageview / $total_vistor):'n/a';
+	echo "</tbody><tfoot><tr><th>count:</th><th>$total_material</th><th>$total_item</th><th>$total_pageview</th><th>$total_pageview</th><th>average:</th><th>$avg_ppv</th><th>&nbsp;</th></tr></tfoot>\n";
+
 	echo "</table>\n";
 
 	if (! isset($_GET['all'])) {
-		echo "<a href='?all=2'>update other all</a> <a href='?all=1'>update all</a>";
+		echo "<p><button onclick=\"location.href='?all=2';\">update other all</button> <button onclick=\"location.href='?all=1';\">update all</button></p>";
 	}
 }
 /**
@@ -360,9 +379,9 @@ function curl_redir_exec($ch,$return_header = 0){
 	        return ($return_header)? $data : $body;
 	    }
 	    $last_url = parse_url(curl_getinfo($ch, CURLINFO_EFFECTIVE_URL));
-	    if (! $url['scheme']) $url['scheme'] = $last_url['scheme'];
-	    if (! $url['host']) $url['host'] = $last_url['host'];
-	    if (! $url['path']) $url['path'] = $last_url['path'];
+		if (! $url['scheme']) $url['scheme'] = $last_url['scheme'];
+		if (! $url['host']) $url['host']     = $last_url['host'];
+		if (! $url['path']) $url['path']     = $last_url['path'];
 	    $new_url = $url['scheme'] . '://' . $url['host'] . $url['path'] . ($url['query']? '?'.$url['query'] : '');
 	    curl_setopt($ch, CURLOPT_URL, $new_url);
 	    //echo 'Redirecting to ', $new_url . "<br />\n";
