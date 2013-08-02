@@ -25,22 +25,24 @@ $ch = get_agent();
 $db = get_database($db_host,$db_user,$db_pass,$db_name);
 
 // processing
-$logined_url = get_login($admin_user,$admin_pass);
+$logined_url = do_login($admin_user,$admin_pass);
 
 $materials_url = get_logined($logined_url);
 
 get_materials($materials_url);
 
 curl_close($ch);
-	
+
+/**
+ * get browser object
+ * @return object $ch browser agent 
+ */
 function get_agent() {
 	global $cookiejar_dir;
 	echo "start...<br />\n";
 
-	if(! extension_loaded('curl')) {
-		echo "Fatal : couldn't found curl extension in PHP! Please enable it.<br />\n";
-		exit;
-	}
+	if(! extension_loaded('curl')) error("Fatal : couldn't found curl extension in PHP! Please enable it.");
+	
 	$user_agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/27.0.1453.110 Safari/537.36';
 
 	$ch = curl_init();
@@ -48,37 +50,49 @@ function get_agent() {
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 	curl_setopt($ch, CURLOPT_USERAGENT, $user_agent);
 	curl_setopt($ch, CURLINFO_HEADER_OUT, true);
+
 	if (! is_dir($cookiejar_dir) || ! is_writable($cookiejar_dir)) {
 		$cookiejar_dir = ini_get('upload_tmp_dir');
 	}
-	if (! is_dir($cookiejar_dir) || ! is_writable($cookiejar_dir)) {
-		echo "not setting writable cookie jar dir.";
-		exit;
-	} 
+	if (! is_dir($cookiejar_dir) || ! is_writable($cookiejar_dir)) error("not setting writable cookie jar dir.");
+	
 	$cookiejar = $cookiejar_dir . '/weixin_admin.cookie';
-	if (! is_writable($cookiejar)) {
-		echo "couldn't create cookiejar.";
-		exit;
-	}
+	if (! is_writable($cookiejar)) error("couldn't create cookiejar.");
+	
 	curl_setopt($ch, CURLOPT_COOKIEJAR, $cookiejar);
 
 	return $ch;
 }
-function get_database($db_host,$db_user,$db_pass,$db_name)
-{
+
+/**
+ * get database object
+ * @param string $db_host
+ * @param string $db_user
+ * @param string $db_pass
+ * @param string $db_name
+ * @return object $db database object
+ */
+function get_database($db_host,$db_user,$db_pass,$db_name) {
 	$db = null;
 	if (! empty($db_host) && ! empty($db_user) && ! empty($db_name)) {
 		$db = mysql_connect($db_host,$db_user,$db_pass);
 		mysql_select_db($db_name);
 		mysql_query("SET NAMES UTF8");
 	} else {
-		echo "Not found database setting, don't use database support.<br />\n";
+		message("not found database setting, don't use database support.");
 	}
 
 	return $db;
 }
-function get_login($admin_user,$admin_pass) {
+/**
+ * do login
+ * @param string $admin_user 
+ * @param string $admin_pass
+ * @return string $logined_url
+ */
+function do_login($admin_user,$admin_pass) {
 	global $ch,$token;
+
 	$refer_url = 'http://admin.wechat.com/cgi-bin/loginpage?t=wxm2-login&lang=en_US';
 	$login_url = 'http://admin.wechat.com/cgi-bin/login?lang=en_US';
 
@@ -93,7 +107,7 @@ function get_login($admin_user,$admin_pass) {
 		    exit;
 		}
 	}
-	echo "do login...\n";
+	message("do login...");
 
 	$post_data = array(
 		'username' 	=> $admin_user,
@@ -105,11 +119,8 @@ function get_login($admin_user,$admin_pass) {
 	curl_setopt($ch, CURLOPT_POST, 1);
 	curl_setopt($ch, CURLOPT_POSTFIELDS, $post_data);
 
-	$output = curl_redir_exec($ch,0);
-	if ($output === false) {
-		echo curl_error($ch);
-		exit;
-	}
+	$output = curl_redir_exec($ch);
+	if ($output === false) error(curl_error($ch));
 
 	$logined = json_decode($output);
 	$logined_url = '';
@@ -121,7 +132,7 @@ function get_login($admin_user,$admin_pass) {
 	 		$logined_url = $logined->ErrMsg;
 			if (preg_match('/token=(\d+)/', $logined_url,$matches)) {
 				$token = $matches[1];
-				echo "logined,get token : $token<br />\n";
+				message("logined,get token : $token");
 			}
 	 		break;
 	 	case "-1":
@@ -161,27 +172,30 @@ function get_login($admin_user,$admin_pass) {
 	 		$error_msg = "This Conference Account has expired.";
 	 		break;
 	 	default:
-	 		echo "login failture: ";
+	 		echo "login failture";
 	 		break;
 	} 
-	if (empty($logined_url)) {
-		echo "Can't login. " . $error_msg;
-		exit;
-	}
+
+	if (empty($logined_url)) error("Can't login. " . $error_msg);
+
 	return $logined_url;
 }
 
+/**
+ * access logined page and get materials url
+ * @param string $logined_url
+ * @return string $materials_url
+ */
 function get_logined($logined_url) {
 	global $ch,$token;
+
 	$logined_url = 'http://admin.wechat.com' . $logined_url;
-	echo "access logined : $logined_url<br />";
+
+	message("access logined page");
 	curl_setopt($ch, CURLOPT_URL, $logined_url);
 
-	$output = curl_redir_exec($ch,1);
-	if ($output === false) {
-		echo curl_error($ch);
-		exit;
-	}
+	$output = curl_redir_exec($ch);
+	if ($output === false) error(curl_error($ch));
 
 	if (preg_match('/name : "Materials", \s+link : \'([^\']+)\'/', $output,$matches)) {
 		return $matches[1];
@@ -190,10 +204,15 @@ function get_logined($logined_url) {
 	}
 }
 
+/**
+ * access materials page and parse it
+ * @param string $materials_url
+ */
 function get_materials($materials_url) {
 	global $ch,$token,$db,$db_table;
+
 	$materials_url = 'http://admin.wechat.com' . $materials_url;
-	echo "access materials url and parse<br />\n";
+	message("access materials page and parse it.");
 
 	$list = array();
 	if (! is_null($db)) {
@@ -222,21 +241,20 @@ function get_materials($materials_url) {
 		echo "<tr><td colspan=7 align=center bgcolor='#EEE'>Page $pageidx</td></tr>\n";
 		curl_setopt($ch, CURLOPT_URL, $materials_url);
 
-		$output = curl_redir_exec($ch,1);
-		if ($output === false) {
-			echo curl_error($ch);
-			exit;
-		}
+		$output = curl_redir_exec($ch);
+		if ($output === false) error(curl_error($ch));
 
 		if (preg_match('/<script id="json-msglist" type="json">(.*?)<\/script>/s', $output,$matches)) {
 			$materials = json_decode($matches[1]);
 			if ($materials === false || ! $materials->count) {
-				echo "finished";
+				message("not found materials");
 				break;
 			}
+
 			foreach ($materials->list as $appmsg) {
 				$appmsgid = $appmsg->appId;
 				$time = $appmsg->time;
+
 				foreach ($appmsg->appmsgList as $itemidx => $item) {
 					$itemidx++;
 					curl_setopt($ch, CURLOPT_URL, $stat_url . urlencode($item->url));
@@ -254,7 +272,7 @@ function get_materials($materials_url) {
 							$sql = "UPDATE `{$db_table}` SET
 								`pageview` = {$pageview},`vistor` = {$vistor}
 								WHERE (`appmsgid` = '{$appmsgid}' AND `itemidx` = {$itemidx})";
-							mysql_query($sql) or die(mysql_error());
+							mysql_query($sql) or error(mysql_error());
   							if (mysql_affected_rows()) {
 								$updated = '+ ' . ($pageview - $exist['pageview']) . '/' . ($vistor - $exist['vistor']);
 							}
@@ -278,7 +296,7 @@ function get_materials($materials_url) {
 								`title` = '{$title}',`desc` = '{$desc}',
 								`pageview` = {$pageview},`vistor` = {$vistor}";
 							$updated = 'New';
-							mysql_query($sql) or die(mysql_error());
+							mysql_query($sql) or error(mysql_error());
 						}
 					}
 
@@ -309,45 +327,65 @@ function get_materials($materials_url) {
 		echo "<a href='?all=2'>update other all</a> <a href='?all=1'>update all</a>";
 	}
 }
-
-function curl_redir_exec($ch,$with_header = 0){
+/**
+ * do curl exec with auto redirect
+ * @param object $ch curl object
+ * @param integer $return_header 
+ * @return string $data
+ */
+function curl_redir_exec($ch,$return_header = 0){
 	static $curl_loops = 0;
-	static $curl_max_loops = 20;
-	if ($curl_loops++ >= $curl_max_loops)
-	{
+	$curl_max_loops = 20;
+	if ($curl_loops++ >= $curl_max_loops) {
 	    $curl_loops = 0;
 	    return FALSE;
 	}
 	curl_setopt($ch, CURLOPT_HEADER, true);
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 	curl_setopt($ch, CURLOPT_HTTPHEADER, array('Expect:'));
+
 	$data = curl_exec($ch);
 	list($header, $body) = explode("\r\n\r\n", $data, 2);
 	$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-	if ($http_code == 301 || $http_code == 302)
-	{
+
+	if ($http_code == 301 || $http_code == 302) {
+		// redirect
 	    $matches = array();
 	    preg_match('/Location:(.*?)\n/i', $header, $matches);
+
 	    $url = @parse_url(trim(array_pop($matches)));
-	    if (!$url)
-	    {
+	    if (! $url) {
 	        //couldn't process the url to redirect to
 	        $curl_loops = 0;
-	        return ($with_header)? $data : $body;
+	        return ($return_header)? $data : $body;
 	    }
 	    $last_url = parse_url(curl_getinfo($ch, CURLINFO_EFFECTIVE_URL));
-	    if (!$url['scheme'])
-	        $url['scheme'] = $last_url['scheme'];
-	    if (!$url['host'])
-	        $url['host'] = $last_url['host'];
-	    if (!$url['path'])
-	        $url['path'] = $last_url['path'];
-	    $new_url = $url['scheme'] . '://' . $url['host'] . $url['path'] . ($url['query']?'?'.$url['query']:'');
+	    if (! $url['scheme']) $url['scheme'] = $last_url['scheme'];
+	    if (! $url['host']) $url['host'] = $last_url['host'];
+	    if (! $url['path']) $url['path'] = $last_url['path'];
+	    $new_url = $url['scheme'] . '://' . $url['host'] . $url['path'] . ($url['query']? '?'.$url['query'] : '');
 	    curl_setopt($ch, CURLOPT_URL, $new_url);
-	    echo 'Redirecting to ', $new_url . "<br />\n";
-	    return curl_redir_exec($ch,$with_header);
+	    //echo 'Redirecting to ', $new_url . "<br />\n";
+	    return curl_redir_exec($ch,$return_header);
 	} else {
+		// goto end
 	    $curl_loops=0;
-	    return ($with_header)? $data : $body;
+	    return ($return_header)? $data : $body;
 	}
+}
+
+/**
+ * show error message and fault
+ * @param string $error error message
+ */
+function error($error) {
+	echo "<p style='color:red;'> $error </p>\n";
+	exit;
+}
+/**
+ * show message
+ * @param string $message string
+ */
+function message($message) {
+	echo "<p> $message </p>\n";
 }
