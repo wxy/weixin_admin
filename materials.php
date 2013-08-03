@@ -31,7 +31,7 @@ $materials_url = get_logined($logined_url);
 
 get_materials($materials_url);
 
-curl_close($ch);
+finish();
 
 /**
  * get browser object
@@ -200,7 +200,7 @@ function get_logined($logined_url) {
 	if (preg_match('/name : "Materials", \s+link : \'([^\']+)\'/', $output,$matches)) {
 		return $matches[1];
 	} else {
-		return '';
+		error("couldn't get materials url.");
 	}
 }
 
@@ -345,6 +345,14 @@ function get_materials($materials_url) {
 	if (! isset($_GET['all'])) {
 		echo "<p><button onclick=\"location.href='?all=2';\">update other all</button> <button onclick=\"location.href='?all=1';\">update all</button></p>";
 	}
+}
+
+/**
+ * finish
+ */
+function finish() {
+	global $ch;
+	curl_close($ch);
 }
 /**
  * do curl exec with auto redirect
