@@ -25,11 +25,11 @@ $ch = get_agent();
 $db = get_database($db_host,$db_user,$db_pass,$db_name);
 
 // processing
-$logined_url = do_login($admin_user,$admin_pass);
+$token = do_login($admin_user,$admin_pass);
 
-$materials_url = get_logined($logined_url);
+//get_logined();
 
-get_materials($materials_url);
+get_materials();
 
 finish();
 
@@ -85,13 +85,13 @@ function get_database($db_host,$db_user,$db_pass,$db_name) {
 	return $db;
 }
 /**
- * do login
+ * do login and get token
  * @param string $admin_user 
  * @param string $admin_pass
- * @return string $logined_url
+ * @return string $token
  */
 function do_login($admin_user,$admin_pass) {
-	global $ch,$token;
+	global $ch;
 
 	$refer_url = 'http://admin.wechat.com/cgi-bin/loginpage?t=wxm2-login&lang=en_US';
 	$login_url = 'http://admin.wechat.com/cgi-bin/login?lang=en_US';
@@ -133,6 +133,7 @@ function do_login($admin_user,$admin_pass) {
 			if (preg_match('/token=(\d+)/', $logined_url,$matches)) {
 				$token = $matches[1];
 				message("logined,get token : $token");
+				return $token;
 			}
 	 		break;
 	 	case "-1":
@@ -176,20 +177,16 @@ function do_login($admin_user,$admin_pass) {
 	 		break;
 	} 
 
-	if (empty($logined_url)) error("Can't login. " . $error_msg);
-
-	return $logined_url;
+	error("Can't login. " . $error_msg);
 }
 
 /**
- * access logined page and get materials url
- * @param string $logined_url
- * @return string $materials_url
+ * access logined page 
  */
-function get_logined($logined_url) {
+function get_logined() {
 	global $ch,$token;
 
-	$logined_url = 'http://admin.wechat.com' . $logined_url;
+	$logined_url = 'http://admin.wechat.com/cgi-bin/indexpage?t=wxm-index&lang=en_US&token=' . $token;
 
 	message("access logined page");
 	curl_setopt($ch, CURLOPT_URL, $logined_url);
@@ -206,12 +203,11 @@ function get_logined($logined_url) {
 
 /**
  * access materials page and parse it
- * @param string $materials_url
  */
-function get_materials($materials_url) {
+function get_materials() {
 	global $ch,$token,$db,$db_table;
 
-	$materials_url = 'http://admin.wechat.com' . $materials_url;
+	$materials_url = 'http://admin.wechat.com/cgi-bin/operate_appmsg?sub=list&type=10&subtype=3&t=wxm-appmsgs-list-new&pagesize=10&pageidx=0&lang=en_US&token=' . $token;
 	message("access materials page and parse it.");
 	flush();
 
@@ -346,6 +342,7 @@ function get_materials($materials_url) {
 		echo "<p><button onclick=\"location.href='?all=2';\">update other all</button> <button onclick=\"location.href='?all=1';\">update all</button></p>";
 	}
 }
+
 
 /**
  * finish
