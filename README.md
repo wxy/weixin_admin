@@ -17,10 +17,11 @@ materials.php
 ### 使用方式
 
 * 上传文件到WEB，浏览器直接运行，会显示一页（10个消息）的文章的访问数据信息
-* 在URL后面加上参数 ?all=1 可以显示全部页的所有文章的访问数据信息
+* 在URL后面加上参数 ?page=-1 可以显示全部页的所有文章的访问数据信息
 * 也可以在显示一页后，点击页面尾部的链接来显示更多：
-  * update other all 显示剩余页面的
-  * update all 显示*全部*页面的（包括当前已经显示的第一页）
+  * next page 显示下一页
+  * next total page 显示剩余页面的
+  * total page 显示*全部*页面的（包括当前已经显示的第一页）
 
 ### 配置
 
@@ -50,6 +51,7 @@ materials.php
 		`url` varchar(250) not null default '',
 		`pageview` int not null default 0,
 		`vistor` int not null default 0,
+		`sent_date` int not null default 0,
 		PRIMARY KEY `id` (`appmsgid`,`itemidx`),
 		KEY `time` (`time`),
 		KEY `title` (`title`),

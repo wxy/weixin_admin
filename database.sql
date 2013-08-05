@@ -8,6 +8,7 @@
 		`url` varchar(250) not null default '',
 		`pageview` int not null default 0,
 		`vistor` int not null default 0,
+		`sent_date` int not null default 0,
 		PRIMARY KEY `id` (`appmsgid`,`itemidx`),
 		KEY `time` (`time`),
 		KEY `title` (`title`),
