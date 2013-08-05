@@ -136,45 +136,19 @@ function do_login($admin_user,$admin_pass) {
 				return $token;
 			}
 	 		break;
-	 	case "-1":
-	 		$error_msg = "System error.";
-	 		break;
-	 	case "-2":
-	 		$error_msg = "Invalid account format";
-	 		break;
-	 	case "-3":
-	 		$error_msg = "Invalid password";
-	 		break;
-	 	case "-4":
-	 		$error_msg = "This account does not exist.";
-	 		break;
-	 	case "-5":
-	 		$error_msg = "Access prohibited";
-	 		break;
-	 	case "-6":
-	 		$error_msg = "Can't login,Need enter the verification code";
-	 		break;
-	 	case "-7":
-	 		$error_msg = "This account has been linked with a private WeChat ID and cannot be used to log in to WeChat Official Account Admin Platform.";
-	 		break;
-	 	case "-8":
-	 		$error_msg = "This email address has been linked with another WeChat ID.";
-	 		break;
-	 	case "-32":
-	 		$error_msg = "Incorrect verification code";
-	 		break;
-	 	case "-200":
-	 		$error_msg = "Due to frequent failed login attempts, you may not login on this account.";
-	 		break;
-	 	case "-94":
-	 		$error_msg = "Please sign in using your email address.";
-	 		break;
-	 	case "10":
-	 		$error_msg = "This Conference Account has expired.";
-	 		break;
-	 	default:
-	 		echo "login failture";
-	 		break;
+		case "-1": 		$error_msg = "System error."; break;
+		case "-2": 		$error_msg = "Invalid account format"; break;
+		case "-3": 		$error_msg = "Invalid password"; break;
+		case "-4": 		$error_msg = "This account does not exist."; break;
+		case "-5": 		$error_msg = "Access prohibited"; break;
+		case "-6": 		$error_msg = "Can't login,Need enter the verification code"; break;
+		case "-7": 		$error_msg = "This account has been linked with a private WeChat ID and cannot be used to log in to WeChat Official Account Admin Platform."; break;
+		case "-8": 		$error_msg = "This email address has been linked with another WeChat ID."; break;
+		case "-32": 	$error_msg = "Incorrect verification code"; break;
+		case "-200":	$error_msg = "Due to frequent failed login attempts, you may not login on this account."; break;
+		case "-94": 	$error_msg = "Please sign in using your email address."; break;
+		case "10": 		$error_msg = "This Conference Account has expired."; break;
+		default: 		$error_msg = "unknown error."; break;
 	} 
 
 	error("Can't login. " . $error_msg);
@@ -208,36 +182,41 @@ function get_materials() {
 	global $ch,$token,$db,$db_table;
 
 	$materials_url = 'http://admin.wechat.com/cgi-bin/operate_appmsg?sub=list&type=10&subtype=3&t=wxm-appmsgs-list-new&pagesize=10&pageidx=0&lang=en_US&token=' . $token;
+	$stat_url = 'http://admin.wechat.com/cgi-bin/statappmsg?token=' . $token . '&t=ajax-appmsg-stats&url=';
+
 	message("access materials page and parse it.");
 	flush();
 
 	$list = array();
 	if (! is_null($db)) {
-		$sql = "SELECT `appmsgid`,`itemidx`,`title`,`url`,`pageview`,`vistor` FROM `{$db_table}` ";
-		$sth = mysql_query($sql);
+		$sql = "SELECT `appmsgid`,`itemidx`,`pageview`,`vistor`,`sent_date` FROM `{$db_table}` ";
+		$query = mysql_query($sql);
 
-		while ($row = mysql_fetch_array($sth)) {
-			$list[$row['appmsgid'] . '/' . $row['itemidx']] = array(
-				'title'    => $row['title'],
-				'url'      => $row['url'],
+		while ($row = mysql_fetch_array($query)) {
+			$list[$row['appmsgid'] . '-' . $row['itemidx']] = array(
 				'pageview' => $row['pageview'],
-				'vistor'   => $row['vistor']);
+				'vistor'   => $row['vistor'],
+				'sent_date'=> $row['sent_date']);
 		}	
 	}
 	
-	$pageidx = 0;
-	if (isset($_GET['all']) && intval($_GET['all']) > 0) $pageidx = intval($_GET['all']) - 1;
+	// default start from page 0
+	$pageidx = (isset($_GET['pageidx']) && $_GET['pageidx'] > 0)? intval($_GET['pageidx']):0;
+	// total fetched pages. default fetch one page. set to -1 will fetch all pages 
+	$pages = (isset($_GET['pages']) && is_numeric($_GET['pages']))? $_GET['pages']:1;
 
-	$stat_url = 'http://admin.wechat.com/cgi-bin/statappmsg?token=' . $token . '&t=ajax-appmsg-stats&url=';
+	echo "<style type='text/css'>button {cursor:pointer;}</style>";
 	echo "<table border=1 cellpadding=4 style='border-collapse:collapse;'>";
-	echo "<thead><tr><th>Time</th><th>MsgId</th><th>Index</th><th>Page View</th><th>Vistor</th><th>Update</th><th>P/V</th><th>Title</th></tr></thead><tbody>\n";
+	echo "<thead><tr><th>Time/Sent</th><th>MsgId</th><th>Index</th><th>Page View</th><th>Vistor</th><th>Update</th><th>P/V</th><th>Title</th></tr></thead><tbody>\n";
 	
 	$total_material = 0;
 	$total_item     = 0;
 	$total_pageview = 0;
 	$total_vistor   = 0;
 	$avg_ppv        = 0;
-	while (true) {
+
+	$fetched_pages = 0;
+	while (++$fetched_pages) {
 		$materials_url = preg_replace('/pageidx=\d+/' , 'pageidx=' . $pageidx++, $materials_url); 
 	
 		curl_setopt($ch, CURLOPT_URL, $materials_url);
@@ -245,7 +224,7 @@ function get_materials() {
 		$output = curl_redir_exec($ch);
 		if ($output === false) error(curl_error($ch));
 
-		if (! preg_match('/<script id="json-msglist" type="json">(.*?)<\/script>/s', $output,$matches)) {
+		if (! preg_match('/<script id="json-msglist" type="json">(.*?)<\/script>/is', $output,$matches)) {
 			break;
 		}
 
@@ -260,8 +239,11 @@ function get_materials() {
 			$time     = $material->time;
 			$count    = $material->count;
 			$total_material++;
+
+			$sent_date = 0;
 			foreach ($material->appmsgList as $itemidx => $item) {
 				$itemidx++;
+				// get stat
 				curl_setopt($ch, CURLOPT_URL, $stat_url . urlencode($item->url));
 				$output   = curl_redir_exec($ch);
 				$stat     = json_decode($output);
@@ -270,36 +252,52 @@ function get_materials() {
 				$vistor   = $stat->UniqueView;
 				
 				$updated  = '';
-					
-				if (isset($list[$appmsgid . '/' . $itemidx])) {
-					$exist = $list[$appmsgid . '/' . $itemidx];
+				
+				$msgid = $appmsgid . '-' . $itemidx;
+				$exist = $list[$msgid];
+
+				// get sent
+				$new_get_sent = false;
+				if ($itemidx == 1) {
+					if (isset($exist) && $exist['sent_date']) {
+						$sent_date = $exist['sent_date'];
+					} else {
+						// new get sent
+						$sent_date = get_sent($item->title,$time);
+						$new_get_sent = true;
+					}
+				} else {
+					$sent_date = 0;
+				}
+
+				if (isset($exist)) {
+					// update
 					if (! is_null($db)) {
 						$sql = "UPDATE `{$db_table}` SET
-							`pageview` = {$pageview},`vistor` = {$vistor}
+							`pageview` = {$pageview},`vistor` = {$vistor},`sent_date` = {$sent_date}
 							WHERE (`appmsgid` = '{$appmsgid}' AND `itemidx` = {$itemidx})";
 						mysql_query($sql) or error(mysql_error());
-							if (mysql_affected_rows()) {
+						if (($pageview != $exist['pageview']) || ($vistor != $exist['vistor'])) {
 							$updated = '+ ' . ($pageview - $exist['pageview']) . '/' . ($vistor - $exist['vistor']);
 						}
 					}
-					$title = addslashes($exist['title']);
-					$url = $exist['url'];
 				} else {
-					$url = addslashes($item->url);
+					// new
 					if (preg_match('/\/cgi-bin\/proxy\?url=(.*)/', $item->imgURL,$matches)) {
 						$img_url = urldecode($matches[1]);
 						$img_url = addslashes($img_url);
 					}
 					
-					$title = addslashes($item->title);
-					$desc  = addslashes($item->desc);
 					if (! is_null($db)) {
+						$title = addslashes($item->title);
+						$desc  = addslashes($item->desc);
+						$url   = addslashes($item->url);
 
 						$sql = "INSERT `{$db_table}` SET
 							`appmsgid` = '{$appmsgid}', `itemidx` = {$itemidx},`time` = '{$time}',
 							`img_url` = '{$img_url}',`url` = '{$url}',
 							`title` = '{$title}',`desc` = '{$desc}',
-							`pageview` = {$pageview},`vistor` = {$vistor}";
+							`pageview` = {$pageview},`vistor` = {$vistor},`sent_date` = {$sent_date}";
 						$updated = 'New';
 						mysql_query($sql) or error(mysql_error());
 					}
@@ -322,28 +320,82 @@ function get_materials() {
 				$total_vistor   += $vistor;
 				echo "<tr style='background-color:$bgcolor;' onmouseover='this.style.backgroundColor=\"honeydew\";' onmouseout='this.style.backgroundColor=\"$bgcolor\";'>\n";
 				if ($count) {
-					echo "<td rowspan=$count bgcolor=white>$time</td><td rowspan=$count bgcolor=white>{$appmsgid}</td>";
+					$sent_date = "<span style='" . ($new_get_sent?'color:red;':'') . "'>" . (($sent_date)?date("Y-m-d H:i:s",$sent_date):'n/a') . "</span>";
+					echo "<td rowspan=$count bgcolor=white>$time<br />$sent_date</td><td rowspan=$count bgcolor=white>{$appmsgid}</td>";
 					$count = 0;
 				}
 				echo "<td>{$itemidx}</td><td>$pageview</td><td>$vistor</td><td>$updated</td><td>$ppv</td>";
-				echo "<td><a href='$url' target=_blank>$title</a></td></tr>\n";
+				echo "<td><a href='{$item->url}' target=_blank>{$item->title}</a></td></tr>\n";
 			}
 		}
 		flush();
 		
-		if (! isset($_GET['all'])) break;
+		if ($pages != -1 && $pages <= $fetched_pages) break;
 	}
 	$avg_ppv = ($total_vistor != 0)?sprintf("%.2f",$total_pageview / $total_vistor):'n/a';
-	echo "</tbody><tfoot><tr><th>count:</th><th>$total_material</th><th>$total_item</th><th>$total_pageview</th><th>$total_pageview</th><th>average:</th><th>$avg_ppv</th><th>&nbsp;</th></tr></tfoot>\n";
+	echo "</tbody><tfoot><tr><th>count:</th><th>$total_material</th><th>$total_item</th><th>$total_pageview</th><th>$total_pageview</th><th>average:</th><th>$avg_ppv</th>\n";
+	if ($pages != -1) {
+		echo "<th><button onclick=\"location.href='?pages=1&pageidx={$pageidx}';\">next page</button> <button onclick=\"location.href='?pages=-1&pageidx={$pageidx}';\">total next page</button> <button onclick=\"location.href='?pages=-1';\">total page</button></th></tr></tfoot>\n";
+	} else {
+		echo "<th>&nbsp;</th></tr>\n";
+	}
 
 	echo "</table>\n";
 
-	if (! isset($_GET['all'])) {
-		echo "<p><button onclick=\"location.href='?all=2';\">update other all</button> <button onclick=\"location.href='?all=1';\">update all</button></p>";
-	}
 }
 
+/**
+ * get sent date
+ * @param string $title meterial title
+ * @return int $datetime
+ */
+function get_sent($title,$date) {
+	global $ch,$token;
+	// sent data of all msgs
+	static $sent_data = array();
+	// current seeked page
+	static $pageidx = 0;
+	// current seeked sent date
+	static $start_date = null;
+	if (is_null($start_date)) $start_date = time();
 
+	$sent_url = 'http://admin.wechat.com/cgi-bin/masssendpage?t=wxm-history&action=msgstatus&pagesize=10&pageidx=0&lang=en_US&token=' . $token;
+
+	// found
+	if (isset($sent_data[$title])) {
+		return $sent_data[$title];
+	}
+	// material's born date
+	$material_date = strtotime($date);
+	// not seek before material's born
+	while ($start_date > $material_date) {
+
+		$sent_url = preg_replace('/pageidx=\d+/' , 'pageidx=' . $pageidx++, $sent_url);
+		curl_setopt($ch, CURLOPT_URL, $sent_url);
+		$output = curl_redir_exec($ch);
+
+		if ($output === false) error(curl_error($ch));
+
+		if (! preg_match('/<script type="json" id="json-msgList">(.*?)<\/script>/is', $output,$matches)) {
+			break;
+		}
+		$msgs = json_decode($matches[1]);
+		if ($msgs === false || empty($msgs)) {
+			break;
+		}
+		foreach ($msgs as $msg) {
+			if ($start_date > $msg->dateTime) {
+				$start_date = $msg->dateTime;
+			}
+			$sent_data[$msg->title] = $msg->dateTime;
+		}
+
+		if (isset($sent_data[$title])) {
+			return $sent_data[$title];
+		}
+	}
+	return 0;
+}
 /**
  * finish
  */
