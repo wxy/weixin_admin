@@ -1,4 +1,6 @@
 <?php
+define('VERSION','0.4.1.20130807');
+
 // global config
 /* cookiejar dir,need writable */
 $cookiejar_dir = '/tmp';
@@ -449,6 +451,9 @@ function get_sent($title,$date) {
 function finish() {
 	global $cookiejar;
 	unlink($cookiejar);
+
+	echo "<p><a href='http://wxy.github.io/weixin_admin/' target=_blank>weixin_admin</a> " . VERSION . ", maintains by <a href='http://wxy.github.io/' target=_blank>wxy</a>.</p>\n";
+
 }
 /**
  * do curl exec with auto redirect

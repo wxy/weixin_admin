@@ -4,7 +4,7 @@
 		`itemidx` int not null default 1,
 		`time` date not null default '0000-00-00',
 		`img_url` varchar(250) not null default '',
-	    `title` varchar(100) not null default '',
+		`title` varchar(100) not null default '',
 		`desc` varchar(200) not null default '',
 		`url` varchar(250) not null default '',
 		`pageview` int not null default 0,
