@@ -1,4 +1,5 @@
 	CREATE TABLE `weixin_article` (
+		`slave_user` varchar(32) not null default '',
 		`appmsgid` int not null default 0,
 		`itemidx` int not null default 1,
 		`time` date not null default '0000-00-00',
@@ -9,7 +10,7 @@
 		`pageview` int not null default 0,
 		`vistor` int not null default 0,
 		`sent_date` int not null default 0,
-		PRIMARY KEY `id` (`appmsgid`,`itemidx`),
+		PRIMARY KEY `id` (`slave_user`,`appmsgid`,`itemidx`),
 		KEY `time` (`time`),
 		KEY `title` (`title`),
 		KEY `pageview` (`pageview`),

@@ -17,15 +17,17 @@ $db_table      = 'weixin_article';
 if (file_exists('materials_conf.php')) require_once('materials_conf.php');
 
 // global variables
-/* session auth token */
-$token = '';
-/* browser */
-$ch = get_agent();
+/* cookie jar */
+$cookiejar = get_cookiejar($cookiejar_dir); 
 /* database */
 $db = get_database($db_host,$db_user,$db_pass,$db_name);
 
 // processing
+/* session auth token */
 $token = do_login($admin_user,$admin_pass);
+
+/* slave user */
+$slave_user = get_slave_user();
 
 //get_logined();
 
@@ -34,13 +36,47 @@ get_materials();
 finish();
 
 /**
+ * get cookie jar
+ * @return string $cookiejar 
+ */
+function get_cookiejar() {
+	global $cookiejar_dir;
+
+	if (! is_dir($cookiejar_dir) || ! is_writable($cookiejar_dir)) {
+		$cookiejar_dir = ini_get('upload_tmp_dir');
+	}
+	if (! is_dir($cookiejar_dir) || ! is_writable($cookiejar_dir)) error("couldn't write cookiejar dir : " . $cookiejar_dir);
+	
+	$cookiejar = $cookiejar_dir . '/weixin_admin.cookie.' . posix_getpid();
+
+	if (! file_exists($cookiejar)) touch($cookiejar);
+	if (! is_writable($cookiejar)) error("couldn't create cookiejar : " . $cookiejar);
+
+	return $cookiejar;
+}
+/**
+ * get cookie from cookiejar
+ * @param string $cookie_name
+ * @return string $cookie
+ */
+function get_cookie($cookie_name) {
+	global $cookiejar;
+
+	$lines = file($cookiejar);
+	foreach ($lines as $line) {
+		if (substr($line,0,1) == '#') continue;
+		$fields = preg_split('/\s+/', $line);
+		if (isset($fields[6]) && $fields[5] == $cookie_name) return $fields[6];
+	}
+	return null;
+}
+
+/**
  * get browser object
  * @return object $ch browser agent 
  */
 function get_agent() {
-	global $cookiejar_dir;
-	echo "start...<br />\n";
-
+	global $cookiejar;
 	if(! extension_loaded('curl')) error("Fatal : couldn't found curl extension in PHP! Please enable it.");
 	
 	$user_agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/27.0.1453.110 Safari/537.36';
@@ -51,15 +87,8 @@ function get_agent() {
 	curl_setopt($ch, CURLOPT_USERAGENT, $user_agent);
 	curl_setopt($ch, CURLINFO_HEADER_OUT, true);
 
-	if (! is_dir($cookiejar_dir) || ! is_writable($cookiejar_dir)) {
-		$cookiejar_dir = ini_get('upload_tmp_dir');
-	}
-	if (! is_dir($cookiejar_dir) || ! is_writable($cookiejar_dir)) error("not setting writable cookie jar dir.");
-	
-	$cookiejar = $cookiejar_dir . '/weixin_admin.cookie';
-	if (! is_writable($cookiejar)) error("couldn't create cookiejar.");
-	
 	curl_setopt($ch, CURLOPT_COOKIEJAR, $cookiejar);
+	curl_setopt($ch, CURLOPT_COOKIEFILE, $cookiejar);
 
 	return $ch;
 }
@@ -91,7 +120,7 @@ function get_database($db_host,$db_user,$db_pass,$db_name) {
  * @return string $token
  */
 function do_login($admin_user,$admin_pass) {
-	global $ch;
+	$ch = get_agent();
 
 	$refer_url = 'http://admin.wechat.com/cgi-bin/loginpage?t=wxm2-login&lang=en_US';
 	$login_url = 'http://admin.wechat.com/cgi-bin/login?lang=en_US';
@@ -155,11 +184,22 @@ function do_login($admin_user,$admin_pass) {
 }
 
 /**
+ * get slave user
+ * @return string $slave_user 
+ */
+function get_slave_user() {
+	$slave_user = get_cookie('slave_user');
+	message("get slave_user : " . $slave_user);	
+	return $slave_user;
+}
+/**
  * access logined page 
  */
 function get_logined() {
-	global $ch,$token;
+	global $token;
 
+	$ch = get_agent();
+	
 	$logined_url = 'http://admin.wechat.com/cgi-bin/indexpage?t=wxm-index&lang=en_US&token=' . $token;
 
 	message("access logined page");
@@ -179,7 +219,9 @@ function get_logined() {
  * access materials page and parse it
  */
 function get_materials() {
-	global $ch,$token,$db,$db_table;
+	global $token,$slave_user,$db,$db_table;
+
+	$ch = get_agent();
 
 	$materials_url = 'http://admin.wechat.com/cgi-bin/operate_appmsg?sub=list&type=10&subtype=3&t=wxm-appmsgs-list-new&pagesize=10&pageidx=0&lang=en_US&token=' . $token;
 	$stat_url = 'http://admin.wechat.com/cgi-bin/statappmsg?token=' . $token . '&t=ajax-appmsg-stats&url=';
@@ -187,9 +229,11 @@ function get_materials() {
 	message("access materials page and parse it.");
 	flush();
 
+	$slave_user = addslashes($slave_user);
 	$list = array();
 	if (! is_null($db)) {
-		$sql = "SELECT `appmsgid`,`itemidx`,`pageview`,`vistor`,`sent_date` FROM `{$db_table}` ";
+		$sql = "SELECT `appmsgid`,`itemidx`,`pageview`,`vistor`,`sent_date` FROM `{$db_table}`
+			WHERE `slave_user` = '{$slave_user}' ";
 		$query = mysql_query($sql);
 
 		while ($row = mysql_fetch_array($query)) {
@@ -275,7 +319,7 @@ function get_materials() {
 					if (! is_null($db)) {
 						$sql = "UPDATE `{$db_table}` SET
 							`pageview` = {$pageview},`vistor` = {$vistor},`sent_date` = {$sent_date}
-							WHERE (`appmsgid` = '{$appmsgid}' AND `itemidx` = {$itemidx})";
+							WHERE (`slave_user` = '{$slave_user}' AND `appmsgid` = '{$appmsgid}' AND `itemidx` = {$itemidx})";
 						mysql_query($sql) or error(mysql_error());
 						if (($pageview != $exist['pageview']) || ($vistor != $exist['vistor'])) {
 							$updated = '+ ' . ($pageview - $exist['pageview']) . '/' . ($vistor - $exist['vistor']);
@@ -294,8 +338,8 @@ function get_materials() {
 						$url   = addslashes($item->url);
 
 						$sql = "INSERT `{$db_table}` SET
-							`appmsgid` = '{$appmsgid}', `itemidx` = {$itemidx},`time` = '{$time}',
-							`img_url` = '{$img_url}',`url` = '{$url}',
+							`slave_user` = '{$slave_user}',`appmsgid` = '{$appmsgid}', `itemidx` = {$itemidx},
+							`time` = '{$time}',`img_url` = '{$img_url}',`url` = '{$url}',
 							`title` = '{$title}',`desc` = '{$desc}',
 							`pageview` = {$pageview},`vistor` = {$vistor},`sent_date` = {$sent_date}";
 						$updated = 'New';
@@ -350,7 +394,10 @@ function get_materials() {
  * @return int $datetime
  */
 function get_sent($title,$date) {
-	global $ch,$token;
+	global $token;
+
+	$ch = get_agent();
+
 	// sent data of all msgs
 	static $sent_data = array();
 	// current seeked page
@@ -400,8 +447,8 @@ function get_sent($title,$date) {
  * finish
  */
 function finish() {
-	global $ch;
-	curl_close($ch);
+	global $cookiejar;
+	unlink($cookiejar);
 }
 /**
  * do curl exec with auto redirect
