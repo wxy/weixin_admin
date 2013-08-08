@@ -1,5 +1,5 @@
 <?php
-define('VERSION','0.4.1.20130807');
+define('VERSION','0.5.1.20130808');
 
 // global config
 /* cookiejar dir,need writable */
@@ -135,6 +135,7 @@ function do_login($admin_user,$admin_pass) {
 			header('WWW-Authenticate: Basic realm="Weixin MP Authenticate"');
 		    header('HTTP/1.0 401 Unauthorized');
 		    echo "Please enter your Weixin MP's account and password.";
+		    if (! empty($error_msg)) error($error_msg);
 		    exit;
 		}
 	}
@@ -181,8 +182,12 @@ function do_login($admin_user,$admin_pass) {
 		case "10": 		$error_msg = "This Conference Account has expired."; break;
 		default: 		$error_msg = "unknown error."; break;
 	} 
+	// login error 
+	header('WWW-Authenticate: Basic realm="Weixin MP Authenticate"');
+    header('HTTP/1.0 401 Unauthorized');
+    error($error_msg);
+    exit;
 
-	error("Can't login. " . $error_msg);
 }
 
 /**
@@ -379,7 +384,7 @@ function get_materials() {
 		if ($pages != -1 && $pages <= $fetched_pages) break;
 	}
 	$avg_ppv = ($total_vistor != 0)?sprintf("%.2f",$total_pageview / $total_vistor):'n/a';
-	echo "</tbody><tfoot><tr><th>count:</th><th>$total_material</th><th>$total_item</th><th>$total_pageview</th><th>$total_pageview</th><th>average:</th><th>$avg_ppv</th>\n";
+	echo "</tbody><tfoot><tr><th>count:</th><th>$total_material</th><th>$total_item</th><th>$total_pageview</th><th>$total_vistor</th><th>average:</th><th>$avg_ppv</th>\n";
 	if ($pages != -1) {
 		echo "<th><button onclick=\"location.href='?pages=1&pageidx={$pageidx}';\">next page</button> <button onclick=\"location.href='?pages=-1&pageidx={$pageidx}';\">total next page</button> <button onclick=\"location.href='?pages=-1';\">total page</button></th></tr></tfoot>\n";
 	} else {
