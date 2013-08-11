@@ -378,8 +378,10 @@ function get_materials() {
 				$total_vistor   += $vistor;
 				echo "<tr style='background-color:$bgcolor;' onmouseover='this.style.backgroundColor=\"honeydew\";' onmouseout='this.style.backgroundColor=\"$bgcolor\";'>\n";
 				if ($count) {
+					$weekday = date('w',$sent_date);
 					$sent_date = "<span style='" . ($new_get_sent?'color:red;':'') . "'>" . (($sent_date)?date("Y-m-d H:i:s",$sent_date):'n/a') . "</span>";
-					echo "<td rowspan=$count bgcolor=white>$time<br />$sent_date</td><td rowspan=$count bgcolor=white>{$appmsgid}</td>";
+					$date_color = ($weekday > 0 && $weekday < 6)?'white':'lightcyan';
+					echo "<td rowspan=$count bgcolor=$date_color>$time<br />$sent_date</td><td rowspan=$count bgcolor=white>{$appmsgid}</td>";
 					$count = 0;
 				}
 				echo "<td>{$itemidx}</td><td>$pageview</td><td>$vistor</td><td>$updated</td><td>$ppv</td>";
