@@ -1,5 +1,5 @@
 <?php
-define('VERSION','0.5.1.20130808');
+define('VERSION','0.5.1.20130811');
 
 // global config
 /* cookiejar dir,need writable */
@@ -14,7 +14,8 @@ $db_user       = '';
 $db_pass       = '';
 $db_name       = '';
 $db_table      = 'weixin_article';
-
+/* debug flag */
+$debug         = 1;
 // user config
 if (file_exists('materials_conf.php')) require_once('materials_conf.php');
 
@@ -25,6 +26,8 @@ $cookiejar = get_cookiejar($cookiejar_dir);
 $db = get_database($db_host,$db_user,$db_pass,$db_name);
 
 // processing
+init();
+
 /* session auth token */
 $token = do_login($admin_user,$admin_pass);
 
@@ -73,6 +76,14 @@ function get_cookie($cookie_name) {
 	return null;
 }
 
+/**
+ * init
+ */
+function init() {
+	echo "<html><head><title>weixin mp materials</title>\n";
+	echo "<style type='text/css'>button {cursor:pointer;}</style>";
+	echo "</head><body>";
+}
 /**
  * get browser object
  * @return object $ch browser agent 
@@ -139,7 +150,7 @@ function do_login($admin_user,$admin_pass) {
 		    exit;
 		}
 	}
-	message("do login...");
+	debug("do login...");
 
 	$post_data = array(
 		'username' => $admin_user,
@@ -164,7 +175,7 @@ function do_login($admin_user,$admin_pass) {
 	 		$logined_url = $logined->ErrMsg;
 			if (preg_match('/token=(\d+)/', $logined_url,$matches)) {
 				$token = $matches[1];
-				message("logined,get token : $token");
+				debug("logined,get token : $token");
 				return $token;
 			}
 	 		break;
@@ -196,7 +207,7 @@ function do_login($admin_user,$admin_pass) {
  */
 function get_slave_user() {
 	$slave_user = get_cookie('slave_user');
-	message("get slave_user : " . $slave_user);	
+	debug("get slave_user : " . $slave_user);	
 	return $slave_user;
 }
 /**
@@ -209,7 +220,7 @@ function get_logined() {
 	
 	$logined_url = 'http://admin.wechat.com/cgi-bin/indexpage?t=wxm-index&lang=en_US&token=' . $token;
 
-	message("access logined page");
+	debug("access logined page");
 	curl_setopt($ch, CURLOPT_URL, $logined_url);
 
 	$output = curl_redir_exec($ch);
@@ -233,7 +244,7 @@ function get_materials() {
 	$materials_url = 'http://admin.wechat.com/cgi-bin/operate_appmsg?sub=list&type=10&subtype=3&t=wxm-appmsgs-list-new&pagesize=10&pageidx=0&lang=en_US&token=' . $token;
 	$stat_url = 'http://admin.wechat.com/cgi-bin/statappmsg?token=' . $token . '&t=ajax-appmsg-stats&url=';
 
-	message("access materials page and parse it.");
+	debug("access materials page and parse it.");
 	flush();
 
 	$slave_user = addslashes($slave_user);
@@ -256,7 +267,7 @@ function get_materials() {
 	// total fetched pages. default fetch one page. set to -1 will fetch all pages 
 	$pages = (isset($_GET['pages']) && is_numeric($_GET['pages']))? $_GET['pages']:1;
 
-	echo "<style type='text/css'>button {cursor:pointer;}</style>";
+	
 	echo "<table border=1 cellpadding=4 style='border-collapse:collapse;'>";
 	echo "<thead><tr><th>Time/Sent</th><th>MsgId</th><th>Index</th><th>Page View</th><th>Vistor</th><th>Update</th><th>P/V</th><th>Title</th></tr></thead><tbody>\n";
 	
@@ -458,7 +469,7 @@ function finish() {
 	unlink($cookiejar);
 
 	echo "<p><a href='http://wxy.github.io/weixin_admin/' target=_blank>weixin_admin</a> " . VERSION . ", maintains by <a href='http://wxy.github.io/' target=_blank>wxy</a>.</p>\n";
-
+	echo "</body></html>\n";
 }
 /**
  * do curl exec with auto redirect
@@ -521,4 +532,13 @@ function error($error) {
  */
 function message($message) {
 	echo "<p> $message </p>\n";
+}
+/**
+ * debug message
+ * @param string $message string
+ */
+function debug($message) {
+	global $debug;
+	if (! $debug) return false;
+	echo "<p>debug: $message </p>\n";
 }
