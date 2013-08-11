@@ -15,7 +15,7 @@ $db_pass       = '';
 $db_name       = '';
 $db_table      = 'weixin_article';
 /* debug flag */
-$debug         = 1;
+$debug         = 0;
 // user config
 if (file_exists('materials_conf.php')) require_once('materials_conf.php');
 
@@ -242,7 +242,6 @@ function get_materials() {
 	$ch = get_agent();
 
 	$materials_url = 'http://admin.wechat.com/cgi-bin/operate_appmsg?sub=list&type=10&subtype=3&t=wxm-appmsgs-list-new&pagesize=10&pageidx=0&lang=en_US&token=' . $token;
-	$stat_url = 'http://admin.wechat.com/cgi-bin/statappmsg?token=' . $token . '&t=ajax-appmsg-stats&url=';
 
 	debug("access materials page and parse it.");
 	flush();
@@ -305,13 +304,10 @@ function get_materials() {
 			$sent_date = 0;
 			foreach ($material->appmsgList as $itemidx => $item) {
 				$itemidx++;
-				// get stat
-				curl_setopt($ch, CURLOPT_URL, $stat_url . urlencode($item->url));
-				$output   = curl_redir_exec($ch);
-				$stat     = json_decode($output);
-				
-				$pageview = $stat->PageView;
-				$vistor   = $stat->UniqueView;
+				$stat = get_stat($ch,$item->url);
+
+				$pageview = $stat['PageView'];
+				$vistor   = $stat['UniqueView'];
 				
 				$updated  = '';
 				
@@ -325,7 +321,7 @@ function get_materials() {
 						$sent_date = $exist['sent_date'];
 					} else {
 						// new get sent
-						$sent_date = get_sent($item->title,$time);
+						$sent_date = get_sent($ch,$item->title,$time);
 						$new_get_sent = true;
 					}
 				} else {
@@ -407,14 +403,30 @@ function get_materials() {
 }
 
 /**
+ * get access stat
+ * @param string $url
+ * @return array $stat
+ */
+function get_stat($ch,$url) {
+	global $token;
+	$stat_url = 'http://admin.wechat.com/cgi-bin/statappmsg?token=' . $token . '&t=ajax-appmsg-stats&url=';
+
+	//$ch = get_agent();
+	// get stat
+	curl_setopt($ch, CURLOPT_URL, $stat_url . urlencode($url));
+	$output   = curl_redir_exec($ch);
+	$stat     = json_decode($output);
+	return (array) $stat;
+}
+/**
  * get sent date
  * @param string $title meterial title
  * @return int $datetime
  */
-function get_sent($title,$date) {
+function get_sent($ch,$title,$date) {
 	global $token;
 
-	$ch = get_agent();
+	//$ch = get_agent();
 
 	// sent data of all msgs
 	static $sent_data = array();
