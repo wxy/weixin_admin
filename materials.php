@@ -16,6 +16,14 @@ $db_name       = '';
 $db_table      = 'weixin_article';
 /* debug flag */
 $debug         = 0;
+/* color set */
+$color_ranks = array(
+	0    => 'color_rank1', 
+	500  => 'color_rank2', 
+	1000 => 'color_rank3', 
+	2000 => 'color_rank4', 
+	4000 => 'color_rank5');
+
 // user config
 if (file_exists('materials_conf.php')) require_once('materials_conf.php');
 
@@ -81,7 +89,6 @@ function get_cookie($cookie_name) {
  */
 function init() {
 	echo "<html><head><title>weixin mp materials</title>\n";
-	echo "<style type='text/css'>button {cursor:pointer;}</style>";
 	echo "</head><body>";
 }
 /**
@@ -237,7 +244,7 @@ function get_logined() {
  * access materials page and parse it
  */
 function get_materials() {
-	global $token,$slave_user,$db,$db_table;
+	global $token,$slave_user,$db,$db_table,$color_ranks;
 
 	$ch = get_agent();
 
@@ -361,14 +368,14 @@ function get_materials() {
 					}
 				}
 
-				if ($pageview < 500) {
-					$bgcolor = 'white';
-				} else if ($pageview < 1000) {
-					$bgcolor = 'lemonchiffon';
-				} else if ($pageview < 2000) {
-					$bgcolor = 'yellow';
-				} else {
-					$bgcolor = 'darkorange';
+				ksort($color_ranks);
+				$line_style = '';
+				foreach ($color_ranks as $rank => $style) {
+					if ($pageview > $rank) {
+						$line_style = $style;
+					} else {
+						break;
+					}
 				}
 
 				$ppv = ($vistor != 0)?sprintf("%.2f",$pageview / $vistor):'n/a';
@@ -376,7 +383,7 @@ function get_materials() {
 				$total_item++;
 				$total_pageview += $pageview;
 				$total_vistor   += $vistor;
-				echo "<tr style='background-color:$bgcolor;' onmouseover='this.style.backgroundColor=\"honeydew\";' onmouseout='this.style.backgroundColor=\"$bgcolor\";'>\n";
+				echo "<tr class='$line_style' onmouseover='this.className=\"hover\";' onmouseout='this.className=\"$line_style\";'>\n";
 				if ($count) {
 					$weekday = date('w',$sent_date);
 					$sent_date = "<span style='" . ($new_get_sent?'color:red;':'') . "'>" . (($sent_date)?date("Y-m-d H:i:s",$sent_date):'n/a') . "</span>";
