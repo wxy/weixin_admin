@@ -1,5 +1,6 @@
 <?php
 define('VERSION','0.5.2.20130826');
+define('OUTPUT_DELIMITER',"\n\n");
 
 // global config
 /* cookiejar dir,need writable */
@@ -24,8 +25,19 @@ $color_ranks = array(
 	2000 => 'color_rank4', 
 	4000 => 'color_rank5');
 
-// user config
+// output format
+$output_format = (isset($_GET['output']) && $_GET['output'] == 'json')?'json':'html';
+
+ob_start();
+
+// user local config 
 if (file_exists('materials_conf.php')) require_once('materials_conf.php');
+
+if ($output_format == 'json') {
+	ob_end_clean();
+	ob_start();
+}
+register_shutdown_function('finish');
 
 // global variables
 /* cookie jar */
@@ -46,7 +58,6 @@ $slave_user = get_slave_user();
 
 get_materials();
 
-finish();
 
 /**
  * get cookie jar
@@ -88,9 +99,14 @@ function get_cookie($cookie_name) {
  * init
  */
 function init() {
-	echo "<html><head><title>weixin mp materials</title>\n";
-	echo "<meta http-equiv='Content-Type' content='text/html; charset=utf-8' />\n";
-	echo "</head><body>";
+	global $output_format;
+	if ($output_format == 'html') {
+		echo "<html><head><title>Materials of Weixin Official Account</title>\n";
+		echo "<meta http-equiv='Content-Type' content='text/html; charset=utf-8' />\n";
+		echo "</head><body>";		
+	} else if ($output_format == 'json') {
+		header("Content-Type:application/json");		
+	}
 }
 /**
  * get browser object
@@ -153,8 +169,7 @@ function do_login($admin_user,$admin_pass) {
 		} else {
 			header('WWW-Authenticate: Basic realm="Weixin Official Account Authenticate"');
 		    header('HTTP/1.0 401 Unauthorized');
-		    echo "Please enter your weixin official account and password.";
-		    if (! empty($error_msg)) error($error_msg);
+		    message("Please enter your weixin official account and password.");
 		    exit;
 		}
 	}
@@ -245,14 +260,14 @@ function get_logined() {
  * access materials page and parse it
  */
 function get_materials() {
-	global $token,$slave_user,$db,$db_table,$color_ranks;
+	global $token,$slave_user,$db,$db_table,$color_ranks,$output_format;
 
 	$ch = get_agent();
 
 	$materials_url = 'http://admin.wechat.com/cgi-bin/operate_appmsg?sub=list&type=10&subtype=3&t=wxm-appmsgs-list-new&pagesize=10&pageidx=0&lang=en_US&token=' . $token;
 
 	debug("access materials page and parse it.");
-	flush();
+	if ($output_format == 'html') flush();
 
 	$slave_user = addslashes($slave_user);
 	$list = array();
@@ -281,9 +296,11 @@ function get_materials() {
 		$pages = 1;
 	}
 	
-	echo "<table border=1 cellpadding=4 style='border-collapse:collapse;'>";
-	echo "<thead><tr><th>Time/Sent</th><th>MsgId</th><th>Index</th><th>Page View</th><th>Vistor</th><th>Update</th><th>P/V</th><th>Title</th></tr></thead><tbody>\n";
-	
+	if ($output_format == 'html') {
+		echo "<table border=1 cellpadding=4 style='border-collapse:collapse;'>";
+		echo "<thead><tr><th>Time/Sent</th><th>MsgId</th><th>Index</th><th>Page View</th><th>Vistor</th><th>Update</th><th>P/V</th><th>Title</th></tr></thead><tbody>\n";
+	}
+
 	$total_material = 0;
 	$total_item     = 0;
 	$total_pageview = 0;
@@ -308,7 +325,9 @@ function get_materials() {
 			break;
 		}
 
-		echo "<tr><td colspan=8 align=center bgcolor='#EEE'>Page $pageidx</td></tr>\n";
+		if ($output_format == 'html') {
+			echo "<tr><td colspan=8 align=center bgcolor='#EEE'>Page $pageidx</td></tr>\n";
+		}
 		foreach ($materials->list as $material) {
 			$appmsgid = $material->appId;
 			$time     = $material->time;
@@ -316,6 +335,7 @@ function get_materials() {
 			$total_material++;
 
 			$sent_date = 0;
+			$output = array();
 			foreach ($material->appmsgList as $itemidx => $item) {
 				$itemidx++;
 				
@@ -399,32 +419,61 @@ function get_materials() {
 				$total_item++;
 				$total_pageview += $pageview;
 				$total_vistor   += $vistor;
-				echo "<tr class='$line_style' onmouseover='this.className=\"hover\";' onmouseout='this.className=\"$line_style\";'>\n";
+
+				if ($output_format == 'html') {
+					echo "<tr class='$line_style' onmouseover='this.className=\"hover\";' onmouseout='this.className=\"$line_style\";'>\n";
+				}
+
 				if ($count) {
-					$weekday = date('w',$sent_date);
-					$sent_date = "<span style='" . ($new_get_sent?'color:red;':'') . "'>" . (($sent_date)?date("Y-m-d H:i:s",$sent_date):'n/a') . "</span>";
-					$date_color = ($weekday > 0 && $weekday < 6)?'white':'lightcyan';
-					echo "<td rowspan=$count bgcolor=$date_color>$time<br />$sent_date</td><td rowspan=$count bgcolor=white>{$appmsgid}</td>";
+					if ($output_format == 'html') {
+						$weekday = date('w',$sent_date);
+						$sent_date = "<span style='" . ($new_get_sent?'color:red;':'') . "'>" . (($sent_date)?date("Y-m-d H:i:s",$sent_date):'n/a') . "</span>";
+						$date_color = ($weekday > 0 && $weekday < 6)?'white':'lightcyan';
+						echo "<td rowspan=$count bgcolor=$date_color>$time<br />$sent_date</td><td rowspan=$count bgcolor=white>{$appmsgid}</td>";
+					} else if ($output_format == 'json') {
+						$sent_date = ($sent_date)?date("Y-m-d H:i:s",$sent_date):'n/a';
+						$output = array(
+							'time'      => $time, 
+							'sent_date' => $sent_date, 
+							'appmsgid'  => $appmsgid,
+							'items'     => array());
+					}
 					$count = 0;
 				}
-				echo "<td>{$itemidx}</td><td>$pageview</td><td>$vistor</td><td>$updated</td><td>$ppv</td>";
-				echo "<td><a href='{$item->url}' target=_blank>{$item->title}</a></td></tr>\n";
+				if ($output_format == 'html') {
+					echo "<td>$itemidx</td><td>$pageview</td><td>$vistor</td><td>$updated</td><td>$ppv</td>";
+					echo "<td><a href='{$item->url}' target=_blank>{$item->title}</a></td></tr>\n";
+				} else if ($output_format == 'json') {
+					array_push($output['items'],array(
+						'itemidx' => $itemidx,
+						'pageview' => $pageview, 
+						'vistor' => $vistor, 
+						'updated' => $updated, 
+						'ppv' => $ppv,
+						'url' => $item->url, 
+						'title' => $item->title));
+				}
+			}
+			if ($output_format == 'json' && ! empty($output)) {
+				echo json_encode($output) . OUTPUT_DELIMITER;
 			}
 		}
-		flush();
+		if ($output_format == 'html') flush();
 		
 		if ($pages != -1 && $pages <= $fetched_pages) break;
 	}
-	$avg_ppv = ($total_vistor != 0)?sprintf("%.2f",$total_pageview / $total_vistor):'n/a';
-	echo "</tbody><tfoot><tr><th>count:</th><th>$total_material</th><th>$total_item</th><th>$total_pageview</th><th>$total_vistor</th><th>average:</th><th>$avg_ppv</th>\n";
-	if ($pages != -1) {
-		echo "<th><button onclick=\"location.href='?pages=1&pageidx={$pageidx}';\">next page</button> <button onclick=\"location.href='?pages=-1&pageidx={$pageidx}';\">total next page</button> <button onclick=\"location.href='?pages=-1';\">total page</button></th></tr></tfoot>\n";
-	} else {
-		echo "<th>&nbsp;</th></tr>\n";
+
+	if ($output_format == 'html') {
+		$avg_ppv = ($total_vistor != 0)?sprintf("%.2f",$total_pageview / $total_vistor):'n/a';
+		echo "</tbody><tfoot><tr><th>count:</th><th>$total_material</th><th>$total_item</th><th>$total_pageview</th><th>$total_vistor</th><th>average:</th><th>$avg_ppv</th>\n";
+		if ($pages != -1) {
+			echo "<th><button onclick=\"location.href='?pages=1&pageidx={$pageidx}';\">next page</button> <button onclick=\"location.href='?pages=-1&pageidx={$pageidx}';\">total next page</button> <button onclick=\"location.href='?pages=-1';\">total page</button></th></tr></tfoot>\n";
+		} else {
+			echo "<th>&nbsp;</th></tr>\n";
+		}
+
+		echo "</table>\n";
 	}
-
-	echo "</table>\n";
-
 }
 
 /**
@@ -502,11 +551,19 @@ function get_sent($ch,$title,$date) {
  * finish
  */
 function finish() {
-	global $cookiejar;
+	global $cookiejar,$output_format;
 	unlink($cookiejar);
 
-	echo "<p><a href='http://wxy.github.io/weixin_admin/' target=_blank>weixin_admin</a> " . VERSION . ", maintains by <a href='http://wxy.github.io/' target=_blank>wxy</a>.</p>\n";
-	echo "</body></html>\n";
+	if ($output_format == 'html') {
+		echo "<p><a href='http://wxy.github.io/weixin_admin/' target=_blank>weixin_admin</a> " . VERSION . ", maintains by <a href='http://wxy.github.io/' target=_blank>wxy</a>.</p>\n";
+		echo "</body></html>\n";
+	} else if ($output_format == 'json') {
+		$output = explode(OUTPUT_DELIMITER, ob_get_clean());
+		// chop last null
+		$last = array_pop($output);
+		if (! empty($last)) array_push($output,$last);
+		echo '[' . implode(",", $output) . ']';
+	}
 }
 /**
  * do curl exec with auto redirect
@@ -546,7 +603,7 @@ function curl_redir_exec($ch,$return_header = 0){
 		if (! $url['path']) $url['path']     = $last_url['path'];
 	    $new_url = $url['scheme'] . '://' . $url['host'] . $url['path'] . ($url['query']? '?'.$url['query'] : '');
 	    curl_setopt($ch, CURLOPT_URL, $new_url);
-	    //echo 'Redirecting to ', $new_url . "<br />\n";
+	    //debug('Redirecting to '. $new_url);
 	    return curl_redir_exec($ch,$return_header);
 	} else {
 		// goto end
@@ -557,25 +614,39 @@ function curl_redir_exec($ch,$return_header = 0){
 
 /**
  * show error message and fault
- * @param string $error error message
+ * @param string $message error 
  */
-function error($error) {
-	echo "<p style='color:red;'> $error </p>\n";
+function error($message) {
+	global $output_format;
+	if ($output_format == 'html') {
+		echo "<p style='color:red;'> $message </p>\n";
+	} else if ($output_format == 'json') {
+		echo json_encode(array('error' => $message)) . OUTPUT_DELIMITER;
+	}
 	exit;
 }
 /**
  * show message
- * @param string $message string
+ * @param string $message 
  */
 function message($message) {
-	echo "<p> $message </p>\n";
+	global $output_format;
+	if ($output_format == 'html') {
+		echo "<p style='color:red;'> $message </p>\n";
+	} else if ($output_format == 'json') {
+		echo json_encode(array('message' => $message)) . OUTPUT_DELIMITER;
+	}
 }
 /**
  * debug message
- * @param string $message string
+ * @param string $message 
  */
 function debug($message) {
-	global $debug;
+	global $debug,$output_format;
 	if (! $debug) return false;
-	echo "<p>debug: $message </p>\n";
+	if ($output_format == 'html') {
+		echo "<p style='color:red;'> $message </p>\n";
+	} else if ($output_format == 'json') {
+		echo json_encode(array('debug' => $message)) . OUTPUT_DELIMITER;
+	}
 }
