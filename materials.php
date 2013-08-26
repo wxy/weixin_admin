@@ -1,5 +1,5 @@
 <?php
-define('VERSION','0.5.1.20130811');
+define('VERSION','0.5.2.20130826');
 
 // global config
 /* cookiejar dir,need writable */
@@ -89,6 +89,7 @@ function get_cookie($cookie_name) {
  */
 function init() {
 	echo "<html><head><title>weixin mp materials</title>\n";
+	echo "<meta http-equiv='Content-Type' content='text/html; charset=utf-8' />\n";
 	echo "</head><body>";
 }
 /**
@@ -150,9 +151,9 @@ function do_login($admin_user,$admin_pass) {
 			$admin_user = $_SERVER['PHP_AUTH_USER'];
 			$admin_pass = $_SERVER['PHP_AUTH_PW'];
 		} else {
-			header('WWW-Authenticate: Basic realm="Weixin MP Authenticate"');
+			header('WWW-Authenticate: Basic realm="Weixin Official Account Authenticate"');
 		    header('HTTP/1.0 401 Unauthorized');
-		    echo "Please enter your Weixin MP's account and password.";
+		    echo "Please enter your weixin official account and password.";
 		    if (! empty($error_msg)) error($error_msg);
 		    exit;
 		}
@@ -273,6 +274,12 @@ function get_materials() {
 	// total fetched pages. default fetch one page. set to -1 will fetch all pages 
 	$pages = (isset($_GET['pages']) && is_numeric($_GET['pages']))? $_GET['pages']:1;
 
+	if (isset($_GET['now'])) {
+		// only get current day sent
+		// limit fetch first page
+		$pageidx = 0;
+		$pages = 1;
+	}
 	
 	echo "<table border=1 cellpadding=4 style='border-collapse:collapse;'>";
 	echo "<thead><tr><th>Time/Sent</th><th>MsgId</th><th>Index</th><th>Page View</th><th>Vistor</th><th>Update</th><th>P/V</th><th>Title</th></tr></thead><tbody>\n";
@@ -311,12 +318,6 @@ function get_materials() {
 			$sent_date = 0;
 			foreach ($material->appmsgList as $itemidx => $item) {
 				$itemidx++;
-				$stat = get_stat($ch,$item->url);
-
-				$pageview = $stat['PageView'];
-				$vistor   = $stat['UniqueView'];
-				
-				$updated  = '';
 				
 				$msgid = $appmsgid . '-' . $itemidx;
 				$exist = $list[$msgid];
@@ -331,9 +332,24 @@ function get_materials() {
 						$sent_date = get_sent($ch,$item->title,$time);
 						$new_get_sent = true;
 					}
+				
+					if (isset($_GET['now'])) {
+						// only get now sent
+						if (date("Y-m-d",$sent_date) != date("Y-m-d")) {
+							$total_material--;
+							break;
+						}
+					}
 				} else {
 					$sent_date = 0;
 				}
+
+				$stat = get_stat($ch,$item->url);
+
+				$pageview = $stat['PageView'];
+				$vistor   = $stat['UniqueView'];
+				
+				$updated  = '';
 
 				if (isset($exist)) {
 					// update
