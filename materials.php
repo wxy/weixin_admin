@@ -294,6 +294,9 @@ function get_materials() {
 		// limit fetch first page
 		$pageidx = 0;
 		$pages = 1;
+	} else if (isset($_GET['yesterday'])) {
+		$pageidx = 0;
+		$pages = 1;
 	}
 	
 	if ($output_format == 'html') {
@@ -353,9 +356,26 @@ function get_materials() {
 						$new_get_sent = true;
 					}
 				
+					$sent_day = date("Y-m-d",$sent_date);
 					if (isset($_GET['now'])) {
 						// only get now sent
-						if (date("Y-m-d",$sent_date) != date("Y-m-d")) {
+						if ($sent_day == date("Y-m-d")) {
+							// get today
+						} else {
+							// skip other day 
+							$total_material--;
+							break;
+						}
+					} else if (isset($_GET['yesterday'])) {
+						// only get yesterday sent
+						if ($sent_day == date("Y-m-d")) {
+							// skip today
+							$total_material--;
+							continue 2;
+						} else if ($sent_day == date("Y-m-d",time() - 86400)) {
+							// get yesterday
+						} else {
+							// skip other day
 							$total_material--;
 							break;
 						}
