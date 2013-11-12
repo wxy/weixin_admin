@@ -1,5 +1,5 @@
 <?php
-define('VERSION','0.5.2.20130826');
+define('VERSION','0.6.0.20131112');
 define('OUTPUT_DELIMITER',"\n\n");
 
 // global config
@@ -16,7 +16,7 @@ $db_pass       = '';
 $db_name       = '';
 $db_table      = 'weixin_article';
 /* debug flag */
-$debug         = 0;
+$debug_flag    = 0;
 /* color set */
 $color_ranks = array(
 	0    => 'color_rank1', 
@@ -159,8 +159,8 @@ function get_database($db_host,$db_user,$db_pass,$db_name) {
 function do_login($admin_user,$admin_pass) {
 	$ch = get_agent();
 
-	$refer_url = 'http://admin.wechat.com/cgi-bin/loginpage?t=wxm2-login&lang=en_US';
-	$login_url = 'http://admin.wechat.com/cgi-bin/login?lang=en_US';
+	$refer_url = 'https://mp.weixin.qq.com/';
+	$login_url = 'https://mp.weixin.qq.com/cgi-bin/login?lang=zh_CN';
 
 	if ($admin_user === '' || $admin_pass === '') {
 		if (isset($_SERVER['PHP_AUTH_USER'])) {
@@ -186,8 +186,6 @@ function do_login($admin_user,$admin_pass) {
 	curl_setopt($ch, CURLOPT_POSTFIELDS, $post_data);
 
 	$output = curl_redir_exec($ch);
-	if ($output === false) error(curl_error($ch));
-
 	$logined = json_decode($output);
 	$logined_url = '';
 	$error_msg = '';
@@ -230,30 +228,8 @@ function do_login($admin_user,$admin_pass) {
  */
 function get_slave_user() {
 	$slave_user = get_cookie('slave_user');
-	debug("get slave_user : " . $slave_user);	
+	debug("get slave_user : " . $slave_user);
 	return $slave_user;
-}
-/**
- * access logined page 
- */
-function get_logined() {
-	global $token;
-
-	$ch = get_agent();
-	
-	$logined_url = 'http://admin.wechat.com/cgi-bin/indexpage?t=wxm-index&lang=en_US&token=' . $token;
-
-	debug("access logined page");
-	curl_setopt($ch, CURLOPT_URL, $logined_url);
-
-	$output = curl_redir_exec($ch);
-	if ($output === false) error(curl_error($ch));
-
-	if (preg_match('/name : "Materials", \s+link : \'([^\']+)\'/', $output,$matches)) {
-		return $matches[1];
-	} else {
-		error("couldn't get materials url.");
-	}
 }
 
 /**
@@ -262,10 +238,10 @@ function get_logined() {
 function get_materials() {
 	global $token,$slave_user,$db,$db_table,$color_ranks,$output_format;
 
+	$pagesize = 10;
 	$ch = get_agent();
 
-	$materials_url = 'http://admin.wechat.com/cgi-bin/operate_appmsg?sub=list&type=10&subtype=3&t=wxm-appmsgs-list-new&pagesize=10&pageidx=0&lang=en_US&token=' . $token;
-
+	$materials_url = "https://mp.weixin.qq.com/cgi-bin/appmsg?begin=0&count={$pagesize}&t=media/appmsg_list&type=10&action=list&lang=zh_CN&token={$token}";
 	debug("access materials page and parse it.");
 	if ($output_format == 'html') flush();
 
@@ -312,36 +288,36 @@ function get_materials() {
 
 	$fetched_pages = 0;
 	while (++$fetched_pages) {
-		$materials_url = preg_replace('/pageidx=\d+/' , 'pageidx=' . $pageidx++, $materials_url); 
+		$materials_url = preg_replace('/begin=\d+/' , 'begin=' . ($pagesize * $pageidx++), $materials_url); 
 	
 		curl_setopt($ch, CURLOPT_URL, $materials_url);
 
 		$output = curl_redir_exec($ch);
 		if ($output === false) error(curl_error($ch));
 
-		if (! preg_match('/<script id="json-msglist" type="json">(.*?)<\/script>/is', $output,$matches)) {
+		if (! preg_match('/wx.cgiData = {"item":(.*?),"file_cnt":/is', $output,$matches)) {
 			break;
 		}
 
 		$materials = json_decode($matches[1]);
-		if ($materials === false || ! $materials->count) {
+	
+		if ($materials === false || ! count($materials)) {
 			break;
 		}
 
 		if ($output_format == 'html') {
 			echo "<tr><td colspan=8 align=center bgcolor='#EEE'>Page $pageidx</td></tr>\n";
 		}
-		foreach ($materials->list as $material) {
-			$appmsgid = $material->appId;
-			$time     = $material->time;
-			$count    = $material->count;
+		foreach ($materials as $material) {
+			$appmsgid = $material->app_id;
+			$time     = date("Y-m-d H:i:s",$material->create_time);
+			$count    = count($material->multi_item);
 			$total_material++;
 
 			$sent_date = 0;
 			$output = array();
-			foreach ($material->appmsgList as $itemidx => $item) {
+			foreach ($material->multi_item as $itemidx => $item) {
 				$itemidx++;
-				
 				$msgid = $appmsgid . '-' . $itemidx;
 				$exist = $list[$msgid];
 
@@ -355,7 +331,7 @@ function get_materials() {
 						$sent_date = get_sent($ch,$item->title,$time);
 						$new_get_sent = true;
 					}
-				
+								
 					$sent_day = date("Y-m-d",$sent_date);
 					if (isset($_GET['now'])) {
 						// only get now sent
@@ -383,11 +359,11 @@ function get_materials() {
 				} else {
 					$sent_date = 0;
 				}
+				
+				$stat = get_stat($ch,$item->title,$time);
 
-				$stat = get_stat($ch,$item->url);
-
-				$pageview = $stat['PageView'];
-				$vistor   = $stat['UniqueView'];
+				$pageview = $stat['pageview'];
+				$vistor   = $stat['vistor'];
 				
 				$updated  = '';
 
@@ -404,16 +380,12 @@ function get_materials() {
 					}
 				} else {
 					// new
-					if (preg_match('/\/cgi-bin\/proxy\?url=(.*)/', $item->imgURL,$matches)) {
-						$img_url = urldecode($matches[1]);
-						$img_url = addslashes($img_url);
-					}
 					
 					if (! is_null($db)) {
 						$title = addslashes($item->title);
-						$desc  = addslashes($item->desc);
-						$url   = addslashes($item->url);
-
+						$desc  = addslashes($item->digest);
+						$url   = addslashes($item->content_url);
+						$img_url = addslashes($item->cover);
 						$sql = "INSERT `{$db_table}` SET
 							`slave_user` = '{$slave_user}',`appmsgid` = '{$appmsgid}', `itemidx` = {$itemidx},
 							`time` = '{$time}',`img_url` = '{$img_url}',`url` = '{$url}',
@@ -423,7 +395,7 @@ function get_materials() {
 						mysql_query($sql) or error(mysql_error());
 					}
 				}
-
+				
 				ksort($color_ranks);
 				$line_style = '';
 				foreach ($color_ranks as $rank => $style) {
@@ -462,7 +434,7 @@ function get_materials() {
 				}
 				if ($output_format == 'html') {
 					echo "<td>$itemidx</td><td>$pageview</td><td>$vistor</td><td>$updated</td><td>$ppv</td>";
-					echo "<td><a href='{$item->url}' target=_blank>{$item->title}</a></td></tr>\n";
+					echo "<td><a href='{$item->content_url}' target=_blank>{$item->title}</a></td></tr>\n";
 				} else if ($output_format == 'json') {
 					array_push($output['items'],array(
 						'itemidx' => $itemidx,
@@ -470,7 +442,7 @@ function get_materials() {
 						'vistor' => $vistor, 
 						'updated' => $updated, 
 						'ppv' => $ppv,
-						'url' => $item->url, 
+						'url' => $item->content_url, 
 						'title' => $item->title));
 				}
 			}
@@ -497,22 +469,6 @@ function get_materials() {
 }
 
 /**
- * get access stat
- * @param string $url
- * @return array $stat
- */
-function get_stat($ch,$url) {
-	global $token;
-	$stat_url = 'http://admin.wechat.com/cgi-bin/statappmsg?token=' . $token . '&t=ajax-appmsg-stats&url=';
-
-	//$ch = get_agent();
-	// get stat
-	curl_setopt($ch, CURLOPT_URL, $stat_url . urlencode($url));
-	$output   = curl_redir_exec($ch);
-	$stat     = json_decode($output);
-	return (array) $stat;
-}
-/**
  * get sent date
  * @param string $title meterial title
  * @return int $datetime
@@ -520,53 +476,138 @@ function get_stat($ch,$url) {
 function get_sent($ch,$title,$date) {
 	global $token;
 
-	//$ch = get_agent();
-
 	// sent data of all msgs
 	static $sent_data = array();
 	// current seeked page
-	static $pageidx = 0;
+	static $sent_pageidx = 0;
 	// current seeked sent date
-	static $start_date = null;
-	if (is_null($start_date)) $start_date = time();
-
-	$sent_url = 'http://admin.wechat.com/cgi-bin/masssendpage?t=wxm-history&action=msgstatus&pagesize=10&pageidx=0&lang=en_US&token=' . $token;
+	static $sent_start_date = null;
+	if (is_null($sent_start_date)) $sent_start_date = time();
+	$pagesize = 10;
 
 	// found
 	if (isset($sent_data[$title])) {
+		debug("get sent data for: \"$title\" : cached");
 		return $sent_data[$title];
 	}
+
+	debug("get sent data for: \"$title\"");
+	$sent_url = "https://mp.weixin.qq.com/cgi-bin/masssendpage?t=mass/list&action=history&begin=0&count={$pagesize}&lang=zh_CN&token={$token}";
+
 	// material's born date
 	$material_date = strtotime($date);
 	// not seek before material's born
-	while ($start_date > $material_date) {
+	while ($sent_start_date > $material_date) {
 
-		$sent_url = preg_replace('/pageidx=\d+/' , 'pageidx=' . $pageidx++, $sent_url);
+		$sent_url = preg_replace('/begin=\d+/' , 'begin=' . ($pagesize * $sent_pageidx++), $sent_url);
+
 		curl_setopt($ch, CURLOPT_URL, $sent_url);
 		$output = curl_redir_exec($ch);
 
 		if ($output === false) error(curl_error($ch));
 
-		if (! preg_match('/<script type="json" id="json-msgList">(.*?)<\/script>/is', $output,$matches)) {
-			break;
+		if (! preg_match('/\({"msg_item":(.*?)}\).msg_item,/is', $output,$matches)) {
+			debug("not found sent data");
+			exit;
 		}
 		$msgs = json_decode($matches[1]);
 		if ($msgs === false || empty($msgs)) {
 			break;
 		}
 		foreach ($msgs as $msg) {
-			if ($start_date > $msg->dateTime) {
-				$start_date = $msg->dateTime;
+			if ($sent_start_date > $msg->date_time) {
+				$sent_start_date = $msg->date_time;
 			}
-			$sent_data[$msg->title] = $msg->dateTime;
+			$sent_data[$msg->title] = $msg->date_time;
 		}
-
 		if (isset($sent_data[$title])) {
 			return $sent_data[$title];
 		}
 	}
 	return 0;
 }
+
+/**
+ * get access stat
+ * @param string $url
+ * @return array $stat
+ */
+function get_stat($ch,$title,$date) {
+	global $token;
+
+	// sent data of all msgs
+	static $stat_data = array();
+	// current seeked page
+	static $stat_pageidx = 1;
+	// current seeked sent date
+	static $stat_start_date = null;
+	if (is_null($stat_start_date)) $stat_start_date = time();
+
+	// found
+	if (isset($stat_data[$title])) {
+		debug("get stat data for: \"$title\" : cached");
+		return $stat_data[$title];
+	}
+
+	debug("get stat data for: \"$title\"");
+	$stat_url = "https://mp.weixin.qq.com/cgi-bin/pluginloginpage?action=stat_article_detail&pluginid=luopan&t=statistics/index&token={$token}&lang=zh_CN";
+
+	// get stat page
+	curl_setopt($ch, CURLOPT_URL, $stat_url . urlencode($url));
+	$output   = curl_redir_exec($ch);
+
+	if (! preg_match("/pluginToken : '([^\s]+)',/", $output,$matches)) {
+		debug("not found plugin param : pluginToken");
+		exit;
+	} else {
+		$plugin_token = $matches[1];
+	}
+	if (! preg_match("/appid : '([^\s]+)',/", $output,$matches)) {
+		debug("not found plugin param : appid");
+		exit;
+	} else {
+		$plugin_appid = $matches[1];
+	}
+
+	$start_date = date("Y-m-d",strtotime("-1 month"));
+	$end_date = date("Y-m-d",strtotime("-1 day"));
+	$rnd = time();
+	$plugin_url = "https://mta.qq.com/mta/wechat/ctr_article_detail/get_list?sort=RefDate%20desc&keyword=&page=1&appid={$plugin_appid}&pluginid=luopan&token={$plugin_token}&devtype=3&time_type=day&start_date={$start_date}&end_date={$end_date}&need_compare=0&app_id=&rnd={$rnd}";
+
+	// material's born date
+	$material_date = strtotime($date);
+	// not seek before material's born
+	while ($stat_start_date > $material_date) {
+
+		$plugin_url = preg_replace('/page=\d+/' , 'page=' . $stat_pageidx++, $plugin_url);
+
+		curl_setopt($ch, CURLOPT_URL, $plugin_url);
+		$output = curl_redir_exec($ch);
+
+		if ($output === false) error(curl_error($ch));
+		$stat = json_decode($output);
+		if ($stat === false || empty($stat)) {
+			debug("not valid stat data");
+			exit;
+		}
+
+		foreach ($stat->data as $msg) {
+			$msg_time = strtotime($msg->time);
+			if ($stat_start_date > $msg_time) {
+				$stat_start_date = $msg_time;
+			}
+			$stat_data[$msg->title] = array(
+				"vistor"	=> str_replace(',','',$msg->index[1]),
+				"pageview" 	=> str_replace(',','',$msg->index[2]));
+		}
+		if (isset($stat_data[$title])) {
+			return $stat_data[$title];
+		}
+
+	}
+	return 0;
+}
+
 /**
  * finish
  */
@@ -601,7 +642,7 @@ function curl_redir_exec($ch,$return_header = 0){
 	curl_setopt($ch, CURLOPT_HEADER, true);
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 	curl_setopt($ch, CURLOPT_HTTPHEADER, array('Expect:'));
-
+	curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 	$data = curl_exec($ch);
 	list($header, $body) = explode("\r\n\r\n", $data, 2);
 	$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -662,8 +703,8 @@ function message($message) {
  * @param string $message 
  */
 function debug($message) {
-	global $debug,$output_format;
-	if (! $debug) return false;
+	global $debug_flag,$output_format;
+	if (! $debug_flag) return false;
 	if ($output_format == 'html') {
 		echo "<p style='color:red;'> $message </p>\n";
 	} else if ($output_format == 'json') {
