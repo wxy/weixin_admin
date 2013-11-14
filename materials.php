@@ -320,7 +320,7 @@ function get_materials() {
 				$itemidx++;
 				$msgid = $appmsgid . '-' . $itemidx;
 				$exist = $list[$msgid];
-
+				$item->title = html_entity_decode($item->title,ENT_QUOTES);
 				// get sent
 				$new_get_sent = false;
 				if ($itemidx == 1) {
@@ -369,9 +369,9 @@ function get_materials() {
 
 				if (isset($exist)) {
 					// update
-					if (! is_null($db)) {
+					if (! is_null($db) & $vistor & $pageview) {
 						$sql = "UPDATE `{$db_table}` SET
-							`pageview` = {$pageview},`vistor` = {$vistor},`sent_date` = {$sent_date}
+							`pageview` = '{$pageview}',`vistor` = '{$vistor}',`sent_date` = '{$sent_date}'
 							WHERE (`slave_user` = '{$slave_user}' AND `appmsgid` = '{$appmsgid}' AND `itemidx` = {$itemidx})";
 						mysql_query($sql) or error(mysql_error());
 						if (($pageview != $exist['pageview']) || ($vistor != $exist['vistor'])) {
@@ -390,7 +390,7 @@ function get_materials() {
 							`slave_user` = '{$slave_user}',`appmsgid` = '{$appmsgid}', `itemidx` = {$itemidx},
 							`time` = '{$time}',`img_url` = '{$img_url}',`url` = '{$url}',
 							`title` = '{$title}',`desc` = '{$desc}',
-							`pageview` = {$pageview},`vistor` = {$vistor},`sent_date` = {$sent_date}";
+							`pageview` = '{$pageview}',`vistor` = '{$vistor}',`sent_date` = '{$sent_date}'";
 						$updated = 'New';
 						mysql_query($sql) or error(mysql_error());
 					}
@@ -575,9 +575,9 @@ function get_stat($ch,$title,$date) {
 	$plugin_url = "https://mta.qq.com/mta/wechat/ctr_article_detail/get_list?sort=RefDate%20desc&keyword=&page=1&appid={$plugin_appid}&pluginid=luopan&token={$plugin_token}&devtype=3&time_type=day&start_date={$start_date}&end_date={$end_date}&need_compare=0&app_id=&rnd={$rnd}";
 
 	// material's born date
-	$material_date = strtotime($date);
+	$material_date = strtotime(date("Y-m-d",strtotime($date)));
 	// not seek before material's born
-	while ($stat_start_date > $material_date) {
+	while ($stat_start_date >= $material_date) {
 
 		$plugin_url = preg_replace('/page=\d+/' , 'page=' . $stat_pageidx++, $plugin_url);
 
@@ -596,9 +596,11 @@ function get_stat($ch,$title,$date) {
 			if ($stat_start_date > $msg_time) {
 				$stat_start_date = $msg_time;
 			}
+			$vistor = (isset($msg->index[1]))? str_replace(',','',$msg->index[1]):0;
+			$pageview = (isset($msg->index[2]))? str_replace(',','',$msg->index[2]):0;
 			$stat_data[$msg->title] = array(
-				"vistor"	=> str_replace(',','',$msg->index[1]),
-				"pageview" 	=> str_replace(',','',$msg->index[2]));
+				"vistor"	=> $vistor,
+				"pageview" 	=> $pageview);
 		}
 		if (isset($stat_data[$title])) {
 			return $stat_data[$title];
