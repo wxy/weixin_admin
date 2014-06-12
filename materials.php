@@ -1,5 +1,5 @@
 <?php
-define('VERSION','0.6.0.20131112');
+define('VERSION','0.6.1.20140322');
 define('OUTPUT_DELIMITER',"\n\n");
 
 // global config
@@ -187,13 +187,14 @@ function do_login($admin_user,$admin_pass) {
 
 	$output = curl_redir_exec($ch);
 	$logined = json_decode($output);
+	debug('login response:' . $output);
 	$logined_url = '';
 	$error_msg = '';
-	switch ($logined->ErrCode) {
+	switch ($logined->base_resp->ret) {
 	 	case '65201':
 	 	case '65202':
 	 	case '0':
-	 		$logined_url = $logined->ErrMsg;
+	 		$logined_url = $logined->redirect_url;
 			if (preg_match('/token=(\d+)/', $logined_url,$matches)) {
 				$token = $matches[1];
 				debug("logined,get token : $token");
@@ -550,7 +551,7 @@ function get_stat($ch,$title,$date) {
 	}
 
 	debug("get stat data for: \"$title\"");
-	$stat_url = "https://mp.weixin.qq.com/cgi-bin/pluginloginpage?action=stat_article_detail&pluginid=luopan&t=statistics/index&token={$token}&lang=zh_CN";
+	$stat_url = "https://mp.weixin.qq.com/misc/pluginloginpage?action=stat_article_detail&pluginid=luopan&t=statistics/index&token={$token}&lang=zh_CN";
 
 	// get stat page
 	curl_setopt($ch, CURLOPT_URL, $stat_url . urlencode($url));
