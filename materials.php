@@ -14,7 +14,9 @@ $db_host       = 'localhost';
 $db_user       = '';
 $db_pass       = '';
 $db_name       = '';
-$db_table      = 'weixin_article';
+$db_table_article   = 'weixin_article';
+$db_table_message 	= 'weixin_message';
+
 /* debug flag */
 $debug_flag    = 0;
 /* color set */
@@ -27,6 +29,7 @@ $color_ranks = array(
 
 // output format
 $output_format = (isset($_GET['output']) && $_GET['output'] == 'json')?'json':'html';
+$menustats = (isset($_GET['menustats']))?true:false;
 
 ob_start();
 
@@ -48,6 +51,11 @@ $db = get_database($db_host,$db_user,$db_pass,$db_name);
 // processing
 init();
 
+/* get menu stats */
+if ($menustats) {
+	get_menu_stats();
+	exit;
+}
 /* session auth token */
 $token = do_login($admin_user,$admin_pass);
 
@@ -150,6 +158,82 @@ function get_database($db_host,$db_user,$db_pass,$db_name) {
 
 	return $db;
 }
+
+/**
+ * get menu click stats
+ * 
+ */
+function get_menu_stats() {
+	global $db,$db_table_message;
+	$sql = "
+		SELECT count(*) AS count,event_key,date_format(from_unixtime(create_time),'%Y-%m-%d') as date 
+		FROM {$db_table_message} 
+		WHERE (create_time > unix_timestamp(curdate()) - 30 * 86400 AND 
+			(event = 'CLICK' OR event = 'VIEW'))
+		GROUP BY date,msg_type,event,event_key
+		ORDER BY date DESC;
+		";
+	$query = mysql_query($sql);
+
+	$list = array();
+	$menus = array();
+	$total_count = 0;
+	$total_grid = 0;
+	$max = 0;
+	while ($row = mysql_fetch_array($query)) {
+		if (! isset($list[$row['date']])) $list[$row['date']] = array();
+		if ($row['event_key'] == 'http://linux.cn/portal.php') {
+			$row['event_key'] = '网站';
+		} else if ($row['event_key'] == 'http://wsq.qq.com/reflow/263037693') {
+			$row['event_key'] = '微社区';
+		}
+		$list[$row['date']][$row['event_key']] = $row['count'];
+		$menus[$row['event_key']] += $row['count'];
+		$total_count += $row['count'];
+		if ($max < $row['count']) $max = $row['count'];
+	}
+	ksort($menus);
+
+	$total_grid = count($menus) * count($list);
+	if ($total_grid == 0) {
+		echo "no menu stats";
+		return;
+	}
+	$avg = $total_count / $total_grid;
+	$rank1 = $avg / 2;
+	$rank2 = $avg;
+	$rank3 = $avg + ($max - $avg) / 3;
+	$rank4 = $avg + 2 * ($max - $avg) / 3;
+
+	echo "<table border=1 cellpadding=4 style='border-collapse:collapse;'>";
+	echo "<thead><tr><th>Date</th>";
+	foreach ($menus as $key => $count) {
+		echo "<th>{$key}<br />({$count})</th>";
+	}
+	echo "</thead><tbody>\n";
+
+	foreach ($list as $date => $stat) {
+		echo "<tr><td>{$date}</td>";
+		foreach (array_keys($menus) as $menu) {
+			if ($stat[$menu] < $rank1) {
+				$bgcolor = 'color_rank1';
+			} else if ($stat[$menu] < $rank2) {
+				$bgcolor = 'color_rank2';
+			} else if ($stat[$menu] < $rank3) {
+				$bgcolor = 'color_rank3';
+			} else if ($stat[$menu] < $rank4) {
+				$bgcolor = 'color_rank4';
+			} else {
+				$bgcolor = 'color_rank5';
+			}
+			echo "<td class='{$bgcolor}'>{$stat[$menu]}</td>";
+		}
+		echo "</tr>\n";
+	}
+
+	echo "</tbody></table>\n";
+
+}
 /**
  * do login and get token
  * @param string $admin_user 
@@ -237,7 +321,7 @@ function get_slave_user() {
  * access materials page and parse it
  */
 function get_materials() {
-	global $token,$slave_user,$db,$db_table,$color_ranks,$output_format;
+	global $token,$slave_user,$db,$db_table_article,$color_ranks,$output_format;
 
 	$pagesize = 10;
 	$ch = get_agent();
@@ -249,7 +333,7 @@ function get_materials() {
 	$slave_user = addslashes($slave_user);
 	$list = array();
 	if (! is_null($db)) {
-		$sql = "SELECT `appmsgid`,`itemidx`,`pageview`,`vistor`,`sent_date` FROM `{$db_table}`
+		$sql = "SELECT `appmsgid`,`itemidx`,`pageview`,`vistor`,`sent_date` FROM `{$db_table_article}`
 			WHERE `slave_user` = '{$slave_user}' ";
 		$query = mysql_query($sql);
 
@@ -370,8 +454,8 @@ function get_materials() {
 
 				if (isset($exist)) {
 					// update
-					if (! is_null($db) & $vistor & $pageview) {
-						$sql = "UPDATE `{$db_table}` SET
+					if (! is_null($db) & $vistor > 0 & $pageview > 0) {
+						$sql = "UPDATE `{$db_table_article}` SET
 							`pageview` = '{$pageview}',`vistor` = '{$vistor}',`sent_date` = '{$sent_date}'
 							WHERE (`slave_user` = '{$slave_user}' AND `appmsgid` = '{$appmsgid}' AND `itemidx` = {$itemidx})";
 						mysql_query($sql) or error(mysql_error());
@@ -387,7 +471,7 @@ function get_materials() {
 						$desc  = addslashes($item->digest);
 						$url   = addslashes($item->content_url);
 						$img_url = addslashes($item->cover);
-						$sql = "INSERT `{$db_table}` SET
+						$sql = "INSERT `{$db_table_article}` SET
 							`slave_user` = '{$slave_user}',`appmsgid` = '{$appmsgid}', `itemidx` = {$itemidx},
 							`time` = '{$time}',`img_url` = '{$img_url}',`url` = '{$url}',
 							`title` = '{$title}',`desc` = '{$desc}',
